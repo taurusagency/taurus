@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 import urllib.parse
 from PIL import Image
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Taurus Agency - Team Management", layout="wide")
+st.set_page_config(page_title="Taurus Agency - Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # --- DATABASE INIZIALE ---
 if 'users_db' not in st.session_state:
@@ -29,15 +30,25 @@ if 'stock_centrale' not in st.session_state:
 COIN_PER_EURO = 91
 MARGINE_COIN = 10 
 MIO_WHATSAPP = "+393331234567" # Sostituisci col tuo numero reale
+APP_URL = "https://taurus-agency.streamlit.app"
 
-# --- STILE CSS ---
+# --- STILE CSS PERSONALIZZATO (LOGO E QUADRATINO) ---
 st.markdown("""
 <style>
+    .taurus-header {
+        text-align: center;
+        padding: 20px;
+        background: linear-gradient(90deg, #1e1e1e 0%, #434343 100%);
+        color: #FFD700;
+        border-radius: 15px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
     .profit-container {
         position: fixed; top: 70px; right: 20px; z-index: 1000;
         background: #1e1e1e; color: #FFD700; padding: 15px;
         border-radius: 12px; border: 2px solid #FFD700; text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5); cursor: pointer;
     }
     .agent-card {
         background: white; padding: 20px; border-radius: 15px;
@@ -47,20 +58,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- LOGO TAURUS ---
+st.markdown("""
+    <div class="taurus-header">
+        <h1 style="margin:0; font-size: 2.5rem;">🐂 TAURUS AGENCY</h1>
+        <p style="margin:0; font-style: italic;">Potere e Precisione nello StarMaker Trading</p>
+    </div>
+""", unsafe_allow_html=True)
+
 # --- 1. SCHERMATA LOGIN ---
 if not st.session_state.authenticated:
-    st.title("🛡️ Taurus Agency - Login")
+    st.subheader("🛡️ Accesso Riservato")
     with st.form("login"):
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
-        if st.form_submit_button("ACCEDI"):
+        if st.form_submit_button("ENTRA NELLA DASHBOARD"):
             if u in st.session_state.users_db and st.session_state.users_db[u]["pass"] == p:
                 st.session_state.authenticated = True
                 st.session_state.user_logged = u
                 st.session_state.user_role = st.session_state.users_db[u]["role"]
                 st.rerun()
             else:
-                st.error("Credenziali non valide.")
+                st.error("Credenziali non valide. Riprova.")
     st.stop()
 
 user = st.session_state.user_logged
@@ -75,7 +94,7 @@ else:
     testo_wa = urllib.parse.quote(f"Ciao TaurusMaster, richiedo il compenso maturato di {guadagno_agente:,.0f} monete.")
     st.markdown(f'<a href="https://wa.me/{MIO_WHATSAPP}?text={testo_wa}" target="_blank" style="text-decoration:none;"><div class="profit-container">RICHIEDI COMPENSO<br><b>{guadagno_agente:,.0f} COIN</b><br>{guadagno_agente/101:.2f} €</div></a>', unsafe_allow_html=True)
 
-# --- 2. DASHBOARD TAURUSMASTER (ADMIN) ---
+# --- 2. DASHBOARD TAURUSMASTER (AMMINISTRATORE) ---
 if role == "Agenzia":
     st.title("🛡️ Pannello TaurusMaster")
     
@@ -88,7 +107,7 @@ if role == "Agenzia":
                 st.session_state.stock_centrale = nuovo_s
                 st.rerun()
 
-    tab1, tab2, tab3 = st.tabs(["👥 Gestione Team", "💰 Rabbocchi", "📜 Registro"])
+    tab1, tab2, tab3 = st.tabs(["👥 Gestione Team", "💰 Rabbocchi Agenti", "🏆 Gara Taurus"])
     
     with tab1:
         cols = st.columns(3)
@@ -96,26 +115,25 @@ if role == "Agenzia":
             if data['role'] == "Subagente":
                 with cols[i % 3]:
                     st.markdown('<div class="agent-card">', unsafe_allow_html=True)
-                    # MOSTRA FOTO SE PRESENTE
                     if data['foto'] is not None:
-                        st.image(data['foto'], width=100)
+                        st.image(data['foto'], width=80)
                     else:
-                        st.write("👤 *Nessuna foto*")
-                    
-                    st.write(f"### {data['name']}")
-                    st.write(f"Budget: **{data['budget']:,.0f}**")
+                        st.write("👤")
+                    st.write(f"**{data['name']}**")
                     
                     with st.expander("Azioni & Credenziali"):
-                        if st.button(f"Saldato (Azzera Guadagno)", key=f"pay_{u_key}"):
+                        if st.button(f"Saldato (Azzera)", key=f"pay_{u_key}"):
                             st.session_state.users_db[u_key]["guadagno_accumulato_coin"] = 0
                             st.rerun()
-                        new_u = st.text_input("User", value=u_key, key=f"u_{u_key}")
-                        new_p = st.text_input("Pass", value=data['pass'], key=f"p_{u_key}")
-                        if st.button("Salva", key=f"s_{u_key}"):
+                        new_u = st.text_input("User Accesso", value=u_key, key=f"u_{u_key}")
+                        new_p = st.text_input("Password", value=data['pass'], key=f"p_{u_key}")
+                        if st.button("Salva Dati", key=f"s_{u_key}"):
                             if new_u != u_key:
                                 st.session_state.users_db[new_u] = st.session_state.users_db.pop(u_key)
                             st.session_state.users_db[new_u]["pass"] = new_p
                             st.rerun()
+                        # Link Diretto per l'agente
+                        st.code(f"Link App: {APP_URL}\nUser: {new_u}\nPass: {new_p}")
                     st.markdown('</div>', unsafe_allow_html=True)
 
     with tab2:
@@ -132,41 +150,39 @@ if role == "Agenzia":
 
 # --- 3. AREA SUBAGENTE (OPERATIVO) ---
 else:
-    st.title(f"🚀 Area Agente: {st.session_state.users_db[user]['name']}")
+    st.title(f"🚀 Dashboard: {st.session_state.users_db[user]['name']}")
     
     with st.sidebar:
-        # CARICAMENTO FOTO PROFILO
-        st.subheader("Profilo")
-        uploaded_file = st.file_uploader("Carica la tua foto", type=['png', 'jpg', 'jpeg'])
+        st.subheader("Tuo Profilo")
+        uploaded_file = st.file_uploader("Carica foto", type=['png', 'jpg', 'jpeg'])
         if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            st.session_state.users_db[user]['foto'] = image
-            st.image(image, width=150)
-            st.success("Foto aggiornata!")
+            st.session_state.users_db[user]['foto'] = Image.open(uploaded_file)
+            st.success("Foto caricata!")
 
     st.metric("Tuo Budget Disponibile", f"{st.session_state.users_db[user]['budget']:,.0f} Coin")
     
     with st.form("vendita"):
         id_c = st.text_input("ID StarMaker Cliente")
-        euro = st.number_input("Prezzo (€)", min_value=1)
+        euro = st.number_input("Importo Venduto (€)", min_value=1)
         
         c_supporto = euro * COIN_PER_EURO
-        st.info(f"Erogazione prevista: {c_supporto:,.0f} monete")
+        st.info(f"💡 Calcolo Automatico: Stai dando {c_supporto:,.0f} monete")
         
-        if st.form_submit_button("CONFERMA E SCARICA BUDGET"):
+        if st.form_submit_button("CONFERMA VENDITA"):
             if st.session_state.users_db[user]["budget"] >= c_supporto:
                 margine = euro * MARGINE_COIN
                 st.session_state.db_vendite.append({
                     "Data": datetime.now().strftime("%d/%m %H:%M"),
-                    "Agente": user, "ID Cliente": id_c, "Euro": euro, "Coin": c_supporto,
+                    "Agente": user, "Nome Agente": st.session_state.users_db[user]['name'],
+                    "ID Cliente": id_c, "Euro": euro, "Coin": c_supporto,
                     "m_sub": margine/2, "m_agenzia": margine/2
                 })
                 st.session_state.users_db[user]["budget"] -= c_supporto
                 st.session_state.users_db[user]["guadagno_accumulato_coin"] += (margine/2)
                 st.rerun()
             else:
-                st.error("Budget insufficiente!")
+                st.error("Budget monete esaurito!")
 
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("Log out"):
         st.session_state.authenticated = False
         st.rerun()
