@@ -2,136 +2,190 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="Taurus Agency - Login", page_icon="🛡️", layout="wide")
+# --- CONFIGURAZIONE DELLA PAGINA ---
+st.set_page_config(
+    page_title="Taurus Agency - StarMaker Dashboard",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# --- DATABASE SIMULATO (In un'app reale useresti un database vero) ---
-# Qui salviamo le credenziali che tu modifichi nel pannello Admin
+# --- LOGICA DI SICUREZZA E DATABASE UTENTI ---
+# Qui definiamo le tue credenziali (Admin) e quelle iniziali dei subagenti
 if 'users_db' not in st.session_state:
     st.session_state.users_db = {
-        "admin": {"pass": "taurus2026", "role": "Agenzia"},
+        "admin": {"pass": "taurus2026", "role": "Agenzia", "name": "Taurus Owner"},
     }
-    # Pre-popoliamo i 12 agenti con nomi di default modificabili
+    # Creazione automatica dei 12 profili subagenti modificabili
     for i in range(1, 13):
-        st.session_state.users_db[f"agente{i}"] = {"pass": f"pass{i}", "role": "Subagente", "name": f"Subagente {i}"}
+        user_key = f"agente{i}"
+        st.session_state.users_db[user_key] = {
+            "pass": f"pass{i}", 
+            "role": "Subagente", 
+            "name": f"Agente {i}"
+        }
 
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
+
 if 'db_vendite' not in st.session_state:
     st.session_state.db_vendite = []
 
-# --- COSTANTI ---
+# --- COSTANTI DI BUSINESS ---
 COIN_PER_EURO_VENDITA = 91
 MARGINE_COIN_TOTALE = 10
-APP_URL = "https://taurus-agency.streamlit.app" 
+APP_URL = "https://taurus-agency.streamlit.app" # <--- CAMBIA QUESTO CON IL TUO URL REALE
 
-# --- STILE CSS ---
+# --- STILE GRAFICO CSS ---
 st.markdown("""
 <style>
+    .main { background-color: #f4f7f6; }
     .profit-container {
         position: fixed; top: 60px; right: 20px; z-index: 999;
-        background: linear-gradient(135deg, #1e1e1e 0%, #333333 100%);
-        color: #FFD700; padding: 15px; border-radius: 15px; border: 2px solid #FFD700;
-        text-align: center; min-width: 180px;
+        background: linear-gradient(135deg, #1e1e1e 0%, #434343 100%);
+        color: #FFD700; padding: 18px; border-radius: 15px; border: 2px solid #FFD700;
+        text-align: center; min-width: 200px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     .agent-card {
         background-color: white; padding: 20px; border-radius: 15px;
-        border-left: 6px solid #FFD700; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border-left: 8px solid #FFD700; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
+    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 1. SCHERMATA DI LOGIN ---
+# --- 1. SCHERMATA DI LOGIN (ACCESSO) ---
 if not st.session_state.authenticated:
-    st.title("🛡️ Accesso Taurus Agency")
-    with st.form("login_form"):
-        user_input = st.text_input("Username")
-        pass_input = st.text_input("Password", type="password")
-        login_btn = st.form_submit_button("Accedi")
-        
-        if login_btn:
-            if user_input in st.session_state.users_db and st.session_state.users_db[user_input]["pass"] == pass_input:
-                st.session_state.authenticated = True
-                st.session_state.user_logged = user_input
-                st.session_state.user_role = st.session_state.users_db[user_input]["role"]
-                st.rerun()
-            else:
-                st.error("Credenziali errate. Riprova.")
-    st.stop() # Blocca il resto del codice se non autenticato
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("")
+        st.title("🛡️ Taurus Agency Login")
+        with st.form("login_form"):
+            user_input = st.text_input("Username (Nome Utente)")
+            pass_input = st.text_input("Password", type="password")
+            login_btn = st.form_submit_button("ACCEDI AL SISTEMA")
+            
+            if login_btn:
+                if user_input in st.session_state.users_db and st.session_state.users_db[user_input]["pass"] == pass_input:
+                    st.session_state.authenticated = True
+                    st.session_state.user_logged = user_input
+                    st.session_state.user_role = st.session_state.users_db[user_input]["role"]
+                    st.rerun()
+                else:
+                    st.error("Credenziali errate. Controlla Username e Password.")
+    st.stop() 
 
-# --- 2. LOGICA POST-LOGIN ---
+# --- 2. CALCOLO GUADAGNI REAL-TIME ---
 current_user = st.session_state.user_logged
 user_role = st.session_state.user_role
 
-# Calcolo Guadagni
 if user_role == 'Agenzia':
+    # L'admin vede il margine totale (5 coin per ogni euro venduto da chiunque)
     tot_coin = sum([v['margine_agency_coin'] for v in st.session_state.db_vendite])
     tot_euro = sum([v['margine_agency_euro'] for v in st.session_state.db_vendite])
 else:
-    # Filtra solo le vendite fatte dall'utente loggato
+    # Il subagente vede solo i suoi 5 coin per ogni euro che ha venduto lui
     mie_vendite = [v for v in st.session_state.db_vendite if v['Agente'] == current_user]
     tot_coin = sum([v['margine_sub_coin'] for v in mie_vendite])
     tot_euro = sum([v['margine_sub_euro'] for v in mie_vendite])
 
-# Widget Guadagno Fisso
-st.markdown(f'<div class="profit-container">GUADAGNO TOTALE<br><span style="font-size:1.5rem; font-weight:bold;">{tot_coin:,.0f} COIN</span><br>{tot_euro:,.2f} €</div>', unsafe_allow_html=True)
+# Widget Fisso in Alto a Destra
+st.markdown(f"""
+    <div class="profit-container">
+        <div style="font-size: 0.8rem; opacity: 0.8;">GUADAGNO ATTUALE</div>
+        <div style="font-size: 1.6rem; font-weight: bold;">{tot_coin:,.0f} COIN</div>
+        <div style="font-size: 1.2rem; color: #fff;">{tot_euro:,.2f} €</div>
+    </div>
+""", unsafe_allow_html=True)
 
-# --- 3. INTERFACCIA AGENZIA ---
+# --- 3. INTERFACCIA AGENZIA (AMMINISTRATORE) ---
 if user_role == 'Agenzia':
-    st.title("Pannello Admin - Taurus Agency")
-    if st.sidebar.button("Logout"):
+    st.sidebar.title("Menu Admin")
+    if st.sidebar.button("LOGOUT"):
         st.session_state.authenticated = False
         st.rerun()
 
-    tab1, tab2 = st.tabs(["📊 Dashboard Subagenti", "📝 Registro Vendite"])
+    st.title("Pannello Taurus Agency - Gestione Rete")
     
-    with tab1:
+    t1, t2 = st.tabs(["👥 Gestione Subagenti", "📊 Registro Vendite Totali"])
+    
+    with t1:
+        st.subheader("Configurazione Credenziali e Invio")
         cols = st.columns(2)
         for i in range(1, 13):
-            agent_key = f"agente{i}"
+            u_key = f"agente{i}"
             with cols[i%2]:
-                st.markdown(f'<div class="agent-card"><h3>{st.session_state.users_db[agent_key]["name"]}</h3>', unsafe_allow_html=True)
-                with st.expander("Modifica Credenziali e Invia"):
-                    # Qui puoi modificare nome e password
-                    new_name = st.text_input("Rinomina Agente (es: Marco)", value=st.session_state.users_db[agent_key]["name"], key=f"n_{i}")
-                    new_pass = st.text_input("Nuova Password", value=st.session_state.users_db[agent_key]["pass"], key=f"p_{i}")
+                st.markdown(f'<div class="agent-card">', unsafe_allow_html=True)
+                st.markdown(f"### {st.session_state.users_db[u_key]['name']}")
+                
+                with st.expander("Modifica Nome/Pass e Genera Messaggio"):
+                    # Campi per modificare dati
+                    nuovo_nome = st.text_input(f"Nome Agente {i}", value=st.session_state.users_db[u_key]["name"], key=f"n_{i}")
+                    nuova_pass = st.text_input(f"Password Agente {i}", value=st.session_state.users_db[u_key]["pass"], key=f"p_{i}")
                     
-                    # Aggiorna il database "finto"
-                    st.session_state.users_db[agent_key]["name"] = new_name
-                    st.session_state.users_db[agent_key]["pass"] = new_pass
+                    # Salvataggio nel database della sessione
+                    st.session_state.users_db[u_key]["name"] = nuovo_nome
+                    st.session_state.users_db[u_key]["pass"] = nuova_pass
                     
-                    msg = f"🛡️ *TAURUS AGENCY*\\n\\n🔗 Link: {APP_URL}\\n👤 User: {agent_key}\\n🔑 Pass: {new_pass}"
+                    # Messaggio da copiare
+                    msg = f"🛡️ *TAURUS AGENCY - ACCESSO*\\n\\n🔗 Link: {APP_URL}\\n👤 User: {u_key}\\n🔑 Pass: {nuova_pass}\\n\\nBenvenuto nel team!"
                     st.code(msg)
-                    st.button(f"Salva e Conferma {i}", key=f"save_{i}")
+                    if st.button(f"Conferma Modifiche Agente {i}", key=f"btn_{i}"):
+                        st.success("Dati aggiornati!")
                 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 4. INTERFACCIA SUBAGENTE ---
+    with t2:
+        st.subheader("Storico Operazioni di tutta la rete")
+        if st.session_state.db_vendite:
+            df = pd.DataFrame(st.session_state.db_vendite)
+            st.table(df)
+        else:
+            st.info("Nessuna ricarica registrata finora.")
+
+# --- 4. INTERFACCIA SUBAGENTE (OPERATIVO) ---
 else:
-    st.title(f"Benvenuto, {st.session_state.users_db[current_user]['name']}")
-    if st.sidebar.button("Logout"):
+    st.sidebar.title("Menu Agente")
+    if st.sidebar.button("LOGOUT"):
         st.session_state.authenticated = False
         st.rerun()
 
-    with st.form("ricarica"):
-        st.subheader("📲 Nuova Operazione")
-        id_sm = st.text_input("ID StarMaker Cliente")
-        euro = st.number_input("Euro Ricevuti", min_value=1)
-        
-        # Calcoli
-        coin_cli = euro * COIN_PER_EURO_VENDITA
-        g_coin = (euro * MARGINE_COIN_TOTALE) / 2
-        g_euro = g_coin / 101
-        
-        st.write(f"Al cliente: **{coin_cli} Coin** | Tuo Guadagno: **{g_coin} Coin**")
-        
-        if st.form_submit_button("Registra Vendita"):
-            st.session_state.db_vendite.append({
-                "Data": datetime.now().strftime("%d/%m %H:%M"),
-                "Agente": current_user,
-                "ID Cliente": id_sm,
-                "Euro": euro,
-                "margine_sub_coin": g_coin, "margine_sub_euro": g_euro,
-                "margine_agency_coin": g_coin, "margine_agency_euro": g_euro
-            })
-            st.success("Ricarica Registrata!")
-            st.rerun()
+    st.title(f"Operativo: {st.session_state.users_db[current_user]['name']}")
+    
+    with st.container():
+        st.markdown('<div class="agent-card">', unsafe_allow_html=True)
+        with st.form("ricarica_form"):
+            st.subheader("📲 Inserisci Nuova Ricarica")
+            id_sm = st.text_input("ID StarMaker Cliente (ID Utente)")
+            euro = st.number_input("Prezzo Pagato dal Cliente (€)", min_value=1, step=1)
+            
+            # Calcoli automatici
+            coin_al_cliente = euro * COIN_PER_EURO_VENDITA
+            guadagno_agente_coin = (euro * MARGINE_COIN_TOTALE) / 2
+            guadagno_agente_euro = guadagno_agente_coin / 101
+            
+            st.divider()
+            c1, c2 = st.columns(2)
+            c1.metric("Monete al Cliente", f"{coin_al_cliente:,.0f} Coin")
+            c2.metric("Tuo Guadagno", f"€ {guadagno_agente_euro:.2f}", f"{guadagno_agente_coin:.0f} Coin")
+            
+            submit = st.form_submit_button("REGISTRA E INVIA RICARICA")
+            
+            if submit:
+                if id_sm:
+                    # Registra l'operazione
+                    st.session_state.db_vendite.append({
+                        "Data": datetime.now().strftime("%d/%m %H:%M"),
+                        "Agente": current_user,
+                        "ID StarMaker": id_sm,
+                        "Euro": euro,
+                        "Coin Cliente": coin_al_cliente,
+                        "margine_sub_coin": guadagno_agente_coin,
+                        "margine_sub_euro": guadagno_agente_euro,
+                        "margine_agency_coin": guadagno_agente_coin, # 50% all'admin
+                        "margine_agency_euro": guadagno_agente_euro
+                    })
+                    st.balloons()
+                    st.success("Ricarica registrata con successo!")
+                else:
+                    st.error("Inserisci l'ID del cliente per procedere.")
+        st.markdown('</div>', unsafe_allow_html=True)
