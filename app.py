@@ -43,35 +43,38 @@ if not st.session_state.auth:
         else: st.error("Credenziali Errate.")
     st.stop()
 
-# --- 3. TABELLONE RISULTATI (Corretto per visualizzare la barra) ---
+# --- 3. TABELLONE RISULTATI (Correzione Definitiva image_14.png) ---
 idx_u = shared_db['Agente'] == st.session_state.user
-guadagno_c = shared_db.loc[idx_u, 'Guadagno_Coins'].values[0]
+guadagno_c = int(shared_db.loc[idx_u, 'Guadagno_Coins'].values[0])
 guadagno_e = guadagno_c / 5 
-coins_disp = shared_db.loc[idx_u, 'Coins_Disponibili'].values[0]
+coins_disp = int(shared_db.loc[idx_u, 'Coins_Disponibili'].values[0])
 euro_debito = shared_db.loc[idx_u, 'Euro_Da_Inviare'].values[0]
 
-# Calcolo percentuale energia basato sul deposito attuale
-percentuale_energia = min(100, int((coins_disp / 1000000) * 100)) if st.session_state.is_master else min(100, int((coins_disp / 50000) * 100))
-colore_energia = "#00FF00" if percentuale_energia > 20 else "#FF4B4B"
+# Calcolo percentuale energia
+perc = min(100, int((coins_disp / 1000000) * 100)) if st.session_state.is_master else min(100, int((coins_disp / 50000) * 100))
+colore_bar = "#00FF00" if perc > 20 else "#FF4B4B"
+titolo = "🏆 MIA PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 MIO GUADAGNO PERSONALE"
 
-titolo_tab = "🏆 MIA PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 MIO GUADAGNO PERSONALE"
-
-# Uso di unsafe_allow_html=True per far leggere il codice grafico
-st.markdown(f"""
-    <div style="background: linear-gradient(90deg, #1e1e1e 0%, #3a3a3a 100%); padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; margin-bottom: 20px; color: white;">
-        <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">{titolo_tab}</p>
-        <h1 style="font-size: 50px; margin: 0;">{int(guadagno_c)} <span style="font-size: 20px;">COINS</span></h1>
-        <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">GUADAGNATI</span></h2>
-        
-        <div style="margin-top: 15px;">
-            <p style="color: #AAA; font-size: 14px; margin: 0;">ENERGIA BUDGET DISPONIBILE: {int(coins_disp)} COINS</p>
-            <div style="background-color: #444; border-radius: 10px; height: 10px; width: 100%; margin-top: 5px;">
-                <div style="background-color: {colore_energia}; height: 10px; width: {percentuale_energia}%; border-radius: 10px;"></div>
-            </div>
+# Costruzione HTML pulita per evitare l'errore visivo
+html_code = f"""
+<div style="background: linear-gradient(90deg, #1e1e1e 0%, #3a3a3a 100%); padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; margin-bottom: 20px; color: white; font-family: sans-serif;">
+    <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">{titolo}</p>
+    <h1 style="font-size: 50px; margin: 0;">{guadagno_c} <span style="font-size: 20px;">COINS</span></h1>
+    <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">GUADAGNATI</span></h2>
+    <div style="margin-top: 15px;">
+        <p style="color: #AAA; font-size: 14px; margin: 0;">ENERGIA BUDGET DISPONIBILE: {coins_disp} COINS</p>
+        <div style="background-color: #444; border-radius: 10px; height: 10px; width: 100%; margin-top: 5px; overflow: hidden;">
+            <div style="background-color: {colore_bar}; height: 10px; width: {perc}%; border-radius: 10px;"></div>
         </div>
-        {"<h3 style='color: #FF4B4B; margin-top: 15px;'>💰 EURO DA INVIARE: € " + f"{euro_debito:.2f}</h3>" if not st.session_state.is_master else ""}
     </div>
-    """, unsafe_allow_html=True)
+"""
+
+if not st.session_state.is_master:
+    html_code += f'<h3 style="color: #FF4B4B; margin-top: 15px;">💰 EURO DA INVIARE: € {euro_debito:.2f}</h3>'
+
+html_code += "</div>"
+
+st.markdown(html_code, unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
