@@ -1,164 +1,201 @@
+
 import streamlit as st
 import pandas as pd
-import urllib.parse
+from datetime import datetime
+import base64
 
-# --- CONFIGURAZIONE ---
-st.set_page_config(page_title="Taurus Agency - Magazzino Real-Time", layout="wide")
+# --- CONFIGURAZIONE PAGINA ---
+st.set_page_config(
+    page_title="Taurus Agency - StarMaker Dashboard",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- COSTANTI DI BUSINESS ---
+# Acquisto: 1€ = 101 Coin
+# Vendita: 1€ = 91 Coin
+# Margine Totale: 10 Coin/€ -> 5 Coin Agenzia / 5 Coin Subagente
+COIN_PER_EURO_VENDITA = 91
+MARGINE_COIN_TOTALE = 10
+RIPARTIZIONE_PERCENTUALE = 0.5
+APP_URL = "https://taurus-agency.streamlit.app" # Sostituisci con il tuo URL reale
 
 # --- STILE CSS ---
 st.markdown("""
-    <style>
-    .energy-bar-container { width: 100%; background-color: #e0e0e0; border-radius: 10px; margin: 10px 0; }
-    .energy-bar-fill { height: 18px; border-radius: 10px; transition: width 0.5s; }
-    .status-card { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #eee; margin-bottom: 20px; }
-    .wa-button { background-color: #25D366; color: white !important; padding: 8px 15px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 14px; }
-    .master-card { background: #1E1E1E; color: white; padding: 20px; border-radius: 15px; margin-bottom: 25px; }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+    /* Sfondo e font */
+    .main { background-color: #f8f9fa; }
+    
+    /* Box Guadagno in alto a destra */
+    .profit-container {
+        position: fixed;
+        top: 60px;
+        right: 20px;
+        z-index: 999;
+        background: linear-gradient(135deg, #1e1e1e 0%, #333333 100%);
+        color: #FFD700;
+        padding: 15px 25px;
+        border-radius: 15px;
+        border: 2px solid #FFD700;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        text-align: center;
+        min-width: 180px;
+    }
+    
+    /* Card Subagenti */
+    .agent-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 15px;
+        border-left: 6px solid #FFD700;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+    }
+    
+    /* Header e Titoli */
+    h1, h2, h3 { color: #1a1a1a; font-family: 'Helvetica Neue', sans-serif; }
+    
+    /* Bottoni */
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# --- DATABASE INIZIALE ---
-if 'magazzino_master' not in st.session_state:
-    st.session_state.magazzino_master = 0  # PARTE A ZERO COME RICHIESTO
-if 'db_agenti' not in st.session_state:
-    st.session_state.db_agenti = pd.DataFrame({
-        'ID': range(1, 13),
-        'Nome': [f'Agente {i}' for i in range(1, 13)],
-        'Username': [f'user{i}' for i in range(1, 13)],
-        'Password': [f'pass{i}' for i in range(1, 13)],
-        'Telefono': ['' for _ in range(12)],
-        'Coin_Attuali': [0 for _ in range(12)]
-    })
+# --- FUNZIONI DI CALCOLO ---
+def calcola_operazione(euro):
+    coin_erogati = euro * COIN_PER_EURO_VENDITA
+    margine_totale = euro * MARGINE_COIN_TOTALE
+    guadagno_singolo_coin = margine_totale * RIPARTIZIONE_PERCENTUALE
+    # Conversione in Euro basata sul costo reale di acquisto (101 coin = 1€)
+    guadagno_singolo_euro = guadagno_singolo_coin / 101
+    return coin_erogati, guadagno_singolo_coin, guadagno_singolo_euro
 
-# --- FUNZIONE BARRA ENERGIA ---
-def energy_bar(current, max_val, label="Energia"):
-    percent = min(100, max(0, int((current / max_val) * 100))) if max_val > 0 else 0
-    color = "#28a745" if percent > 40 else "#ffc107" if percent > 15 else "#dc3545"
-    st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top:10px;">
-            <span>{label}: {percent}%</span>
-            <span>{current:,} Coin</span>
-        </div>
-        <div class="energy-bar-container"><div class="energy-bar-fill" style="width: {percent}%; background-color: {color};"></div></div>
-        """, unsafe_allow_html=True)
+# --- GESTIONE STATO (DATABASE TEMPORANEO) ---
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = 'Agenzia' # Alternare tra 'Agenzia' e 'Subagente' per test
+if 'db_vendite' not in st.session_state:
+    st.session_state.db_vendite = []
 
-# --- LOGIN ---
-if 'auth' not in st.session_state:
-    st.title("🛡️ Taurus Agency Login")
-    u, p = st.columns(2)
-    user_in = u.text_input("Username")
-    pass_in = p.text_input("Password", type="password")
-    if st.button("Accedi"):
-        if user_in == "TaurusMaster" and pass_in == "Taurus2026":
-            st.session_state.auth = {"role": "Master"}
-            st.rerun()
-    st.stop()
+# --- CALCOLO TOTALI PER IL QUADRATINO IN ALTO ---
+if st.session_state.user_role == 'Agenzia':
+    # L'agenzia vede il totale di tutti i suoi margini dai subagenti
+    tot_coin = sum([v['margine_agency_coin'] for v in st.session_state.db_vendite])
+    tot_euro = sum([v['margine_agency_euro'] for v in st.session_state.db_vendite])
+else:
+    # Il subagente vede solo il suo guadagno
+    tot_coin = sum([v['margine_sub_coin'] for v in st.session_state.db_vendite])
+    tot_euro = sum([v['margine_sub_euro'] for v in st.session_state.db_vendite])
 
-# --- DASHBOARD MASTER ---
+# --- WIDGET GUADAGNO FISSO ---
 st.markdown(f"""
-    <div class="master-card">
-        <h1 style='margin:0; color: #FFD700;'>🐂 TAURUS MASTER CONTROL</h1>
-        <p style='margin:0; opacity: 0.8;'>Gestione Magazzino Centrale e Subagenti</p>
+    <div class="profit-container">
+        <div style="font-size: 0.8rem; letter-spacing: 1px;">GUADAGNO TOTALE</div>
+        <div style="font-size: 1.6rem; font-weight: 800;">{tot_coin:,.0f} COIN</div>
+        <div style="font-size: 1.2rem; color: #ffffff;">{tot_euro:,.2f} €</div>
     </div>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# Sezione Magazzino Centrale (Modificabile)
-col_m1, col_m2 = st.columns([2, 1])
-with col_m1:
-    st.markdown("### 🏦 Stato Magazzino Centrale")
-    # Usiamo 10 Milioni come scala massima puramente estetica per la barra
-    energy_bar(st.session_state.magazzino_master, 10000000, label="Giacenza Centrale")
+# --- SIDEBAR LOGOUT/SWITCH (PER DEMO) ---
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/1055/1055644.png", width=100)
+    st.title("Taurus Admin")
+    role = st.radio("Seleziona Interfaccia (Test):", ["Agenzia", "Subagente"])
+    st.session_state.user_role = role
+    st.divider()
+    st.info(f"Connesso come: **{st.session_state.user_role}**")
 
-with col_m2:
-    st.markdown("### ⚙️ Regola Magazzino")
-    val_m = st.number_input("Quantità Coin", min_value=0, step=10000, key="master_val")
-    cm1, cm2 = st.columns(2)
-    if cm1.button("➕ Carica", use_container_width=True):
-        st.session_state.magazzino_master += val_m
-        st.rerun()
-    if cm2.button("➖ Scarica", use_container_width=True):
-        st.session_state.magazzino_master -= val_m
-        st.rerun()
+# --- CONTENUTO PRINCIPALE ---
+st.title("🛡️ Taurus Agency Management")
+st.write("Sistema integrato ricariche StarMaker & Rete Subagenti")
 
-st.divider()
-
-# --- MONITORAGGIO AGENTI ---
-st.markdown("### 👥 Gestione Subagenti (Vasi Comunicanti)")
-cols = st.columns(3)
-
-for i, row in st.session_state.db_agenti.iterrows():
-    with cols[i % 3]:
-        st.markdown("<div class='status-card'>", unsafe_allow_html=True)
-        st.write(f"**{row['Nome']}**")
-        energy_bar(row['Coin_Attuali'], 500000, label="Budget Agente")
+if st.session_state.user_role == 'Agenzia':
+    # ==========================
+    # AREA TAURUS AGENCY (ADMIN)
+    # ==========================
+    t1, t2 = st.tabs(["📊 Dashboard Rete", "👥 Gestione Subagenti"])
+    
+    with t1:
+        st.subheader("Riepilogo Performance Subagenti")
+        col_main1, col_main2, col_main3 = st.columns(3)
+        col_main1.metric("Totale Coin Agenzia", f"{tot_coin:,.0f}")
+        col_main2.metric("Valore in Euro", f"€ {tot_euro:,.2f}")
+        col_main3.metric("Operazioni Totali", len(st.session_state.db_vendite))
         
-        with st.expander("Gestisci Credenziali e Monete"):
-            # Credenziali
-            new_u = st.text_input("Username", row['Username'], key=f"u{i}")
-            new_p = st.text_input("Password", row['Password'], key=f"p{i}")
-            new_t = st.text_input("WhatsApp (es. 39333...)", row['Telefono'], key=f"t{i}")
+        st.divider()
+        
+        # Griglia Subagenti
+        cols = st.columns(2)
+        for i in range(1, 13):
+            with cols[i%2]:
+                st.markdown(f"""
+                <div class="agent-card">
+                    <h3>Subagente {i:02d}</h3>
+                    <p>ID Account: <b>ST-AGENT-{i:03d}</b></p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                with st.expander(f"Dettagli e Credenziali Agente {i}"):
+                    u = f"taurus_sub_{i}"
+                    p = f"pass_{i}2026"
+                    wa = st.text_input("Numero WhatsApp", key=f"wa_{i}")
+                    
+                    msg = f"🛡️ *TAURUS AGENCY - CREDENZIALI*\n\n🔗 Accedi qui: {APP_URL}\n👤 Username: {u}\n🔑 Password: {p}\n\n*Nota: Ogni ricarica genera 5 coin di guadagno per te ogni 1€ venduto.*"
+                    
+                    if st.button(f"Invia Credenziali Agente {i}", key=f"btn_{i}"):
+                        st.success("Testo pronto per l'invio!")
+                        st.code(msg)
+                st.write("") # Spacer
+
+    with t2:
+        st.subheader("Registro Tutte le Vendite")
+        if st.session_state.db_vendite:
+            df = pd.DataFrame(st.session_state.db_vendite)
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("Nessuna vendita registrata al momento.")
+
+else:
+    # ==========================
+    # AREA SUBAGENTE (OPERATIVO)
+    # ==========================
+    st.subheader("📲 Nuova Ricarica Cliente")
+    
+    with st.container():
+        st.markdown('<div class="agent-card" style="border-left-color: #007bff;">', unsafe_allow_html=True)
+        with st.form("form_ricarica"):
+            c1, c2 = st.columns(2)
+            id_starmaker = c1.text_input("ID StarMaker Cliente", placeholder="Es: 1234567")
+            importo_euro = c2.number_input("Importo Ricarica (€)", min_value=1, value=10)
+            
+            coin_cli, g_coin, g_euro = calcola_operazione(importo_euro)
             
             st.divider()
+            st.write("### Anteprima Operazione")
+            cc1, cc2 = st.columns(2)
+            cc1.info(f"**Al Cliente:** {coin_cli:,.0f} Coin")
+            cc2.success(f"**Tuo Guadagno:** {g_coin:,.0f} Coin ({g_euro:.2f} €)")
             
-            # Movimento Monete (Tutto collegato al magazzino master)
-            quantita = st.number_input("Quantità da spostare", min_value=0, key=f"n{i}")
-            b1, b2 = st.columns(2)
+            submit = st.form_submit_button("CONFERMA E REGISTRA RICARICA")
             
-            if b1.button(f"⬆️ Dai Monete", key=f"give{i}"):
-                if st.session_state.magazzino_master >= quantita:
-                    st.session_state.magazzino_master -= quantita
-                    st.session_state.db_agenti.at[i, 'Coin_Attuali'] += quantita
-                    st.session_state.db_agenti.at[i, 'Username'] = new_u
-                    st.session_state.db_agenti.at[i, 'Password'] = new_p
-                    st.session_state.db_agenti.at[i, 'Telefono'] = new_t
-                    st.success(f"Trasferiti {quantita} coin!")
-                    st.rerun()
+            if submit:
+                if id_starmaker:
+                    v = {
+                        "Data": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "ID Cliente": id_starmaker,
+                        "Euro Venduti": importo_euro,
+                        "Coin Cliente": coin_cli,
+                        "margine_sub_coin": g_coin,
+                        "margine_sub_euro": g_euro,
+                        "margine_agency_coin": g_coin, # 50% all'agenzia
+                        "margine_agency_euro": g_euro
+                    }
+                    st.session_state.db_vendite.append(v)
+                    st.balloons()
+                    st.success("Operazione registrata con successo!")
                 else:
-                    st.error("Magazzino Master insufficiente!")
-
-            if b2.button(f"⬇️ Togli Monete", key=f"take{i}"):
-                if st.session_state.db_agenti.at[i, 'Coin_Attuali'] >= quantita:
-                    st.session_state.db_agenti.at[i, 'Coin_Attuali'] -= quantita
-                    st.session_state.magazzino_master += quantita
-                    st.success(f"Recuperati {quantita} coin!")
-                    st.rerun()
-                else:
-                    st.error("L'agente non ha abbastanza monete!")
-            
-            # Invio WhatsApp
-            if new_t:
-                testo = f"Ciao {row['Nome']}, ecco i tuoi dati Taurus:\n👤 User: {new_u}\n🔑 Pass: {new_p}\n🔋 Saldo: {st.session_state.db_agenti.at[i, 'Coin_Attuali']}"
-                link_wa = f"https://wa.me/{new_t}?text={urllib.parse.quote(testo)}"
-                st.markdown(f'<a href="{link_wa}" target="_blank" class="wa-button">📲 Invia Credenziali</a>', unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-
-st.sidebar.button("Logout", on_click=lambda: st.session_state.pop('auth'))
-import streamlit as st
-
-# Funzione per calcolare il profitto
-def calcola_profitti(coin_venduti, is_subagente=False):
-    # Ogni Euro venduto genera 10 monete di margine totale
-    euro_equivalenti = coin_venduti / 91
-    margine_totale_coin = euro_equivalenti * 10
-    
-    if is_subagente:
-        # Ripartizione 50/50 tra subagente e agenzia
-        guadagno_coin = margine_totale_coin / 2
-    else:
-        # Se vende l'agenzia direttamente, prende tutto il margine (10 coin)
-        # Se vende il subagente, l'agenzia prende comunque 5 coin
-        guadagno_coin = margine_totale_coin 
-
-    guadagno_euro = guadagno_coin / 101
-    return guadagno_coin, guadagno_euro
-
-# Widget in alto a destra
-header_col1, header_col2 = st.columns([3, 1])
-with header_col2:
-    st.markdown("""
-    <div style="border: 1px solid #e6e6e6; border-radius: 10px; padding: 10px; background-color: #f9f9f9;">
-        <h4 style="margin:0;">Profitto Totale</h4>
-        <p style="margin:0; color: green;"><b>{:.2f} Coin</b></p>
-        <p style="margin:0; color: blue;"><b>{:.2f} €</b></p>
-    </div>
-    """.format(totale_coin, totale_euro), unsafe_allow_html=True)
+                    st.error("Inserire un ID StarMaker valido.")
+        st.markdown('</div>', unsafe_allow_html=True)
