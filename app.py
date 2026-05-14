@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from PIL import Image
 import urllib.parse
 
 # --- CONFIGURAZIONE ---
@@ -43,43 +41,42 @@ if not st.session_state.auth:
         else: st.error("Credenziali Errate.")
     st.stop()
 
-# --- 3. FUNZIONE GENERATRICE BARRA ENERGIA (HTML) ---
-def build_energy_bar(label, current_coins, max_ref=50000):
-    if label == "MassimoMaster": max_ref = 1000000
-    perc = min(100, int((current_coins / max_ref) * 100))
-    color = "#00FF00" if perc > 20 else "#FF4B4B"
-    return f"""
-    <div style="margin-bottom: 10px;">
-        <p style="color: #AAA; font-size: 12px; margin: 0;">{label.upper()}: {int(current_coins)} COINS</p>
-        <div style="background-color: #444; border-radius: 5px; height: 8px; width: 100%; overflow: hidden;">
-            <div style="background-color: {color}; height: 8px; width: {perc}%; transition: width 0.5s;"></div>
-        </div>
-    </div>
-    """
-
-# --- 4. TABELLONE RISULTATI PRINCIPALE ---
+# --- 3. LOGICA VISUALIZZAZIONE TABELLONE (Correzione image_16.png) ---
 idx_u = shared_db['Agente'] == st.session_state.user
 guadagno_c = int(shared_db.loc[idx_u, 'Guadagno_Coins'].values[0])
 guadagno_e = guadagno_c / 5 
 coins_disp = int(shared_db.loc[idx_u, 'Coins_Disponibili'].values[0])
 euro_debito = shared_db.loc[idx_u, 'Euro_Da_Inviare'].values[0]
 
+# Funzione per generare il codice HTML della barra senza errori di rendering
+def get_bar_html(current, label_text, is_master=False):
+    max_val = 1000000 if is_master else 50000
+    percent = min(100, int((current / max_val) * 100))
+    color = "#00FF00" if percent > 20 else "#FF4B4B"
+    return f"""
+    <div style="margin-top: 10px; text-align: left;">
+        <p style="color: #AAA; font-size: 14px; margin: 0;">{label_text}: {current} COINS</p>
+        <div style="background-color: #444; border-radius: 10px; height: 12px; width: 100%; margin-top: 5px; overflow: hidden;">
+            <div style="background-color: {color}; height: 12px; width: {percent}%; border-radius: 10px;"></div>
+        </div>
+    </div>
+    """
+
 titolo = "🏆 MIA PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 MIO GUADAGNO PERSONALE"
 
-html_main = f"""
+# Costruzione Tabellone Nero
+tabellone_html = f"""
 <div style="background: linear-gradient(90deg, #1e1e1e 0%, #3a3a3a 100%); padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; margin-bottom: 20px; color: white;">
     <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">{titolo}</p>
     <h1 style="font-size: 50px; margin: 0;">{guadagno_c} <span style="font-size: 20px;">COINS</span></h1>
     <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">GUADAGNATI</span></h2>
-    <div style="margin-top: 15px;">
-        {build_energy_bar("Energia Disponibile", coins_disp)}
-    </div>
+    {get_bar_html(coins_disp, "ENERGIA BUDGET DISPONIBILE", st.session_state.is_master)}
 """
 if not st.session_state.is_master:
-    html_main += f'<h3 style="color: #FF4B4B; margin-top: 15px;">💰 EURO DA INVIARE: € {euro_debito:.2f}</h3>'
-html_main += "</div>"
+    tabellone_html += f'<h3 style="color: #FF4B4B; margin-top: 15px;">💰 EURO DA INVIARE: € {euro_debito:.2f}</h3>'
+tabellone_html += "</div>"
 
-st.markdown(html_main, unsafe_allow_html=True)
+st.markdown(tabellone_html, unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
@@ -89,38 +86,36 @@ with st.sidebar:
         st.session_state.auth = False
         st.rerun()
 
-# --- 5. PANNELLO MASTER (Monitoraggio Subagenti) ---
+# --- 4. PANNELLO MASTER ---
 if st.session_state.is_master:
     st.title("🚀 Taurus Master Control")
     
-    # NUOVA SEZIONE: Monitoraggio Energia di tutti i subagenti
-    with st.container():
-        st.subheader("🔋 Monitoraggio Energia Subagenti")
-        cols = st.columns(3)
-        sub_list = shared_db[shared_db['Agente'] != "MassimoMaster"]
-        for i, row in enumerate(sub_list.itertuples()):
-            with cols[i % 3]:
-                st.markdown(build_energy_bar(row.Agente, row.Coins_Disponibili), unsafe_allow_html=True)
+    # Sezione Monitoraggio Energie Subagenti
+    st.subheader("🔋 Monitoraggio Energia Subagenti")
+    m_cols = st.columns(3)
+    subs = shared_db[shared_db['Agente'] != "MassimoMaster"]
+    for i, row in enumerate(subs.itertuples()):
+        with m_cols[i % 3]:
+            st.markdown(get_bar_html(row.Coins_Disponibili, f"Energia {row.Agente}"), unsafe_allow_html=True)
 
     with st.expander("💸 Gestione Depositi e Rabbocchi (COINS)"):
         target = st.selectbox("Seleziona Conto", shared_db['Agente'])
-        quant = st.number_input("Quantità COINS (+/- ricarica)", step=100.0)
+        quant = st.number_input("Quantità COINS (+/-)", step=100.0)
         if st.button("Esegui"):
             shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] += quant
             st.rerun()
-
+    
     st.write("### 📊 Riepilogo Debiti")
     st.dataframe(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Euro_Da_Inviare', 'Guadagno_Coins', 'Vendite_Totali_Coins']], use_container_width=True)
 
-# --- 6. PANNELLO SUBAGENTE ---
+# --- 5. PANNELLO SUBAGENTE ---
 else:
     st.title(f"📱 Console Agente: {st.session_state.user}")
-    with st.expander("💳 Registra Invio Denaro a Massimo"):
+    with st.expander("💳 Registra Invio Denaro a Massimo (Defalca)"):
         invio = st.number_input("Importo versato (€)", min_value=0.0)
-        if st.button("✅ Conferma"):
+        if st.button("✅ Conferma Versamento"):
             shared_db.loc[idx_u, 'Euro_Da_Inviare'] -= invio
             st.rerun()
-    
     st.divider()
     id_sm = st.text_input("ID STARMAKER")
     euro_v = st.number_input("EURO INCASSATI (€)", min_value=0.0)
@@ -136,7 +131,7 @@ else:
             st.rerun()
         else: st.error("Energia insufficiente!")
 
-# --- 7. GARA ---
+# --- 6. GARA ---
 st.divider()
 st.subheader("🏁 Classifica Gara Taurus")
 st.table(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Vendite_Totali_Coins']].sort_values(by='Vendite_Totali_Coins', ascending=False))
