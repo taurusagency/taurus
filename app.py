@@ -48,18 +48,17 @@ guadagno_e = guadagno_c / 5
 coins_disp = int(shared_db.loc[idx_u, 'Coins_Disponibili'].values[0])
 euro_debito = shared_db.loc[idx_u, 'Euro_Da_Inviare'].values[0]
 
-# --- 4. TABELLONE NERO (Grafica Pulita) ---
+# --- 4. TABELLONE NERO GRAFICO ---
 titolo = "🏆 MIA PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 MIO GUADAGNO PERSONALE"
 
 st.markdown(f"""
-<div style="background-color: #1e1e1e; padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; color: white;">
+<div style="background-color: #1e1e1e; padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; color: white; font-family: sans-serif;">
     <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">{titolo}</p>
     <h1 style="font-size: 50px; margin: 0;">{guadagno_c} <span style="font-size: 20px;">COINS</span></h1>
     <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">GUADAGNATI</span></h2>
 </div>
 """, unsafe_allow_html=True)
 
-# Barra energia nel tabellone (Usiamo componente nativo per image_18.png)
 st.write(f"**🔋 ENERGIA BUDGET DISPONIBILE: {coins_disp} COINS**")
 max_v = 1000000 if st.session_state.is_master else 50000
 st.progress(min(1.0, coins_disp / max_v))
@@ -75,7 +74,7 @@ with st.sidebar:
         st.session_state.auth = False
         st.rerun()
 
-# --- 5. PANNELLO MASTER ---
+# --- 5. PANNELLO MASTER (LOGICA VASI COMUNICANTI) ---
 if st.session_state.is_master:
     st.title("🚀 Taurus Master Control")
     
@@ -87,12 +86,28 @@ if st.session_state.is_master:
             st.write(f"⚡ {row.Agente}: {int(row.Coins_Disponibili)} COINS")
             st.progress(min(1.0, row.Coins_Disponibili / 50000))
 
-    with st.expander("💸 Gestione Depositi (COINS)"):
-        target = st.selectbox("Seleziona Conto", shared_db['Agente'])
-        quant = st.number_input("Quantità (+/-)", step=100.0)
-        if st.button("Conferma"):
-            shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] += quant
-            st.rerun()
+    with st.expander("💸 Gestione Depositi (Vasi Comunicanti)"):
+        target = st.selectbox("Seleziona Conto Agente", [u for u in UTENTI_PWD.keys() if u != "MassimoMaster"])
+        quant = st.number_input("Quantità COINS da trasferire", min_value=0.0, step=1000.0)
+        
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("⬆️ Carica Agente (Togli a Master)"):
+                if shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'].values[0] >= quant:
+                    shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] += quant
+                    shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] -= quant
+                    st.success(f"Trasferiti {quant} coins a {target}")
+                    st.rerun()
+                else: st.error("Saldo Master insufficiente!")
+        
+        with col_btn2:
+            if st.button("⬇️ Scarica Agente (Rendi a Master)"):
+                if shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'].values[0] >= quant:
+                    shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] -= quant
+                    shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] += quant
+                    st.success(f"Recuperati {quant} coins da {target}")
+                    st.rerun()
+                else: st.error(f"L'agente {target} non ha abbastanza coins!")
     
     st.write("### 📊 Riepilogo Debiti")
     st.dataframe(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Euro_Da_Inviare', 'Guadagno_Coins', 'Vendite_Totali_Coins']], use_container_width=True)
