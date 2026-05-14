@@ -8,25 +8,21 @@ from PIL import Image
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Taurus Agency - Dashboard", page_icon="🐂", layout="wide")
 
-# --- DATABASE CREDENZIALI FISSE (BLINDATE) ---
+# --- DATABASE CREDENZIALI (Gestione Dinamica) ---
 if 'users_db' not in st.session_state:
     st.session_state.users_db = {
         "TaurusMaster": {"pass": "Taurus2026", "role": "Agenzia", "name": "Taurus Owner"},
         "Queen": {"pass": "Taurus69", "role": "Subagente", "name": "Queen"},
     }
-    # Generazione automatica altri agenti
     for i in range(1, 13):
         u_k = f"agente{i}"
         if u_k not in st.session_state.users_db:
             st.session_state.users_db[u_k] = {"pass": f"pass{i}", "role": "Subagente", "name": f"Agente {i}"}
 
-# --- INIZIALIZZAZIONE DATI PERSISTENTI ---
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'db_vendite' not in st.session_state:
-    st.session_state.db_vendite = []
-if 'stock_centrale' not in st.session_state:
-    st.session_state.stock_centrale = 1000000
+# --- STATO E DATI ---
+if 'authenticated' not in st.session_state: st.session_state.authenticated = False
+if 'db_vendite' not in st.session_state: st.session_state.db_vendite = []
+if 'stock_centrale' not in st.session_state: st.session_state.stock_centrale = 1000000
 if 'budgets' not in st.session_state:
     st.session_state.budgets = {k: 0 for k in st.session_state.users_db if st.session_state.users_db[k]['role'] == 'Subagente'}
 if 'guadagni' not in st.session_state:
@@ -38,7 +34,7 @@ if 'fotos' not in st.session_state:
 APP_URL = "https://taurus-agency.streamlit.app"
 COIN_PER_EURO = 91
 MARGINE_COIN = 10 
-MIO_WHATSAPP = "+393331234567" # Sostituisci col tuo numero reale
+MIO_WHATSAPP = "+393331234567" # Sostituisci col tuo numero
 
 # --- STILE CSS ---
 st.markdown("""
@@ -50,48 +46,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- HEADER ---
-st.markdown('<div class="taurus-header"><h1>🐂 TAURUS AGENCY</h1><p>Sistema Professionale Gestione StarMaker</p></div>', unsafe_allow_html=True)
+st.markdown('<div class="taurus-header"><h1>🐂 TAURUS AGENCY</h1></div>', unsafe_allow_html=True)
 
 # --- LOGIN ---
 if not st.session_state.authenticated:
-    with st.container():
-        st.subheader("🛡️ Login Riservato")
-        u_in = st.text_input("Username")
-        p_in = st.text_input("Password", type="password")
-        if st.button("ACCEDI ALLA DASHBOARD"):
-            if u_in in st.session_state.users_db and st.session_state.users_db[u_in]["pass"] == p_in:
-                st.session_state.authenticated = True
-                st.session_state.user_logged = u_in
-                st.session_state.user_role = st.session_state.users_db[u_in]["role"]
-                st.rerun()
-            else: st.error("Credenziali non valide.")
+    u_in = st.text_input("Username")
+    p_in = st.text_input("Password", type="password")
+    if st.button("ACCEDI"):
+        if u_in in st.session_state.users_db and st.session_state.users_db[u_in]["pass"] == p_in:
+            st.session_state.authenticated, st.session_state.user_logged, st.session_state.user_role = True, u_in, st.session_state.users_db[u_in]["role"]
+            st.rerun()
+        else: st.error("Errore credenziali.")
     st.stop()
 
-user = st.session_state.user_logged
-role = st.session_state.user_role
-df_vendite = pd.DataFrame(st.session_state.db_vendite)
+user, role = st.session_state.user_logged, st.session_state.user_role
+df_v = pd.DataFrame(st.session_state.db_vendite)
 
-# --- QUADRATINO GUADAGNO ---
+# --- PROFITTO ---
 if role == "Agenzia":
-    tot_coin = sum([v['m_agenzia'] for v in st.session_state.db_vendite])
-    st.markdown(f'<div class="profit-container">GUADAGNO AGENZIA<br><b>{tot_coin:,.0f} COIN</b><br>{tot_coin/101:.2f} €</div>', unsafe_allow_html=True)
+    tot = sum([v['m_agenzia'] for v in st.session_state.db_vendite])
+    st.markdown(f'<div class="profit-container">GUADAGNO AGENZIA<br><b>{tot:,.0f} COIN</b><br>{tot/101:.2f} €</div>', unsafe_allow_html=True)
 else:
-    g_acc = st.session_state.guadagni[user]
-    msg_wa = urllib.parse.quote(f"Ciao TaurusMaster, richiedo il compenso di {g_acc:,.0f} monete.")
-    st.markdown(f'<a href="https://wa.me/{MIO_WHATSAPP}?text={msg_wa}" target="_blank" style="text-decoration:none;"><div class="profit-container">RICHIEDI COMPENSO<br><b>{g_acc:,.0f} COIN</b><br>{g_acc/101:.2f} €</div></a>', unsafe_allow_html=True)
+    g = st.session_state.guadagni[user]
+    msg = urllib.parse.quote(f"Richiedo compenso di {g:,.0f} monete.")
+    st.markdown(f'<a href="https://wa.me/{MIO_WHATSAPP}?text={msg}" target="_blank" style="text-decoration:none;"><div class="profit-container">RICHIEDI COMPENSO<br><b>{g:,.0f} COIN</b><br>{g/101:.2f} €</div></a>', unsafe_allow_html=True)
 
-# --- DASHBOARD ADMIN (TAURUSMASTER) ---
+# --- PANNELLO ADMIN ---
 if role == "Agenzia":
-    st.title("🛡️ Pannello TaurusMaster")
     col1, col2 = st.columns(2)
-    col1.metric("Stock Centrale Reale", f"{st.session_state.stock_centrale:,.0f} Coin")
+    col1.metric("Stock Centrale", f"{st.session_state.stock_centrale:,.0f} Coin")
     with col2:
-        with st.expander("Modifica o Carica Stock"):
+        with st.expander("Modifica Stock"):
             n_s = st.number_input("Imposta Stock", value=st.session_state.stock_centrale)
-            if st.button("Salva Stock Centrale"): st.session_state.stock_centrale = n_s; st.rerun()
+            if st.button("Salva Stock"): st.session_state.stock_centrale = n_s; st.rerun()
 
-    t1, t2, t3, t4 = st.tabs(["👥 Gestione & WhatsApp", "💰 Rabbocchi", "🏆 Gara Taurus", "📜 Registro ID"])
+    t1, t2, t3, t4 = st.tabs(["👥 Gestione & Credenziali", "💰 Rabbocchi", "🏆 Gara", "📜 Registro ID"])
     
     with t1:
         cols = st.columns(3)
@@ -99,63 +88,53 @@ if role == "Agenzia":
             if d['role'] == "Subagente":
                 with cols[i % 3]:
                     st.markdown('<div class="agent-card">', unsafe_allow_html=True)
-                    if st.session_state.fotos[u_k]: st.image(st.session_state.fotos[u_k], width=80)
+                    if st.session_state.fotos[u_k]: st.image(st.session_state.fotos[u_k], width=60)
                     st.write(f"### {d['name']}")
-                    st.write(f"Maturato: **{st.session_state.guadagni[u_k]:,.0f} Coin**")
-                    if st.button(f"Saldato (Azzera)", key=f"z_{u_k}"):
-                        st.session_state.guadagni[u_k] = 0; st.rerun()
-                    # WhatsApp Link
-                    testo = f"🛡️ *TAURUS AGENCY*\\n\\n🔗 Link: {APP_URL}\\n👤 User: {u_k}\\n🔑 Pass: {d['pass']}"
+                    st.write(f"Maturato: **{st.session_state.guadagni[u_k]:,.0f}**")
+                    if st.button(f"Saldato", key=f"z_{u_k}"): st.session_state.guadagni[u_k] = 0; st.rerun()
+                    
+                    # MODIFICA CREDENZIALI (Ripristinata)
+                    new_u = st.text_input("Modifica Username", u_k, key=f"un_{u_k}")
+                    new_p = st.text_input("Modifica Password", d['pass'], key=f"pw_{u_k}")
+                    if st.button("Salva Dati", key=f"sv_{u_k}"):
+                        if new_u != u_k: st.session_state.users_db[new_u] = st.session_state.users_db.pop(u_k)
+                        st.session_state.users_db[new_u].update({"pass": new_p}); st.rerun()
+                    
+                    testo = f"🛡️ *TAURUS AGENCY*\\n\\n🔗 Link: {APP_URL}\\n👤 User: {new_u}\\n🔑 Pass: {new_p}"
                     t_enc = urllib.parse.quote(testo.replace("\\n", "\n"))
                     st.markdown(f'<a href="https://wa.me/?text={t_enc}" target="_blank" class="wa-button">📲 Invia su WhatsApp</a>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
-        sel = st.selectbox("Seleziona Agente", [k for k,v in st.session_state.users_db.items() if v['role']=="Subagente"])
-        amt = st.number_input("Quantità Coin", step=10000)
-        if st.button("Invia Rabbocco"):
+        sel = st.selectbox("Agente", [k for k,v in st.session_state.users_db.items() if v['role']=="Subagente"])
+        amt = st.number_input("Coin", step=10000)
+        if st.button("Invia"):
             if st.session_state.stock_centrale >= amt:
                 st.session_state.budgets[sel] += amt
-                st.session_state.stock_centrale -= amt; st.success("Trasferito!"); st.rerun()
+                st.session_state.stock_centrale -= amt; st.rerun()
 
     with t3:
-        st.subheader("🏆 Classifica Gara Mensile")
-        if not df_vendite.empty:
-            classifica = df_vendite.groupby('Nome Agente')['Euro'].sum().reset_index().sort_values(by='Euro', ascending=False)
-            st.plotly_chart(px.bar(classifica, x='Nome Agente', y='Euro', color='Euro'), use_container_width=True)
+        if not df_v.empty:
+            st.plotly_chart(px.bar(df_v.groupby('Nome Agente')['Euro'].sum().reset_index(), x='Nome Agente', y='Euro', color='Euro'))
 
-    with t4:
-        st.subheader("📜 Registro Completo ID Clienti")
-        st.dataframe(df_vendite, use_container_width=True)
-
-# --- AREA OPERATIVA SUBAGENTE ---
+# --- AREA SUBAGENTE ---
 else:
     st.title(f"🚀 Dashboard: {st.session_state.users_db[user]['name']}")
     with st.sidebar:
-        st.subheader("Tuo Profilo")
         foto = st.file_uploader("Carica foto", type=['png', 'jpg', 'jpeg'])
-        if foto: st.session_state.fotos[user] = Image.open(foto); st.success("Foto caricata!")
+        if foto: st.session_state.fotos[user] = Image.open(foto); st.success("Foto OK")
 
-    st.metric("Tuo Budget Disponibile", f"{st.session_state.budgets[user]:,.0f} Coin")
+    st.metric("Budget", f"{st.session_state.budgets[user]:,.0f} Coin")
     with st.form("vendita"):
-        id_c = st.text_input("ID StarMaker Cliente")
-        eur = st.number_input("Euro Ricevuti", min_value=1)
-        st.info(f"💡 Erogazione prevista: {eur * COIN_PER_EURO:,.0f} monete")
-        if st.form_submit_button("CONFERMA E REGISTRA"):
+        id_c, eur = st.text_input("ID Cliente"), st.number_input("Euro", min_value=1)
+        st.info(f"💡 Erogazione: {eur * COIN_PER_EURO:,.0f} monete")
+        if st.form_submit_button("CONFERMA"):
             c_out = eur * COIN_PER_EURO
             if st.session_state.budgets[user] >= c_out:
                 m = eur * MARGINE_COIN
                 st.session_state.db_vendite.append({"Data": datetime.now().strftime("%d/%m %H:%M"), "Agente": user, "Nome Agente": st.session_state.users_db[user]['name'], "ID Cliente": id_c, "Euro": eur, "Coin": c_out, "m_sub": m/2, "m_agenzia": m/2})
                 st.session_state.budgets[user] -= c_out
-                st.session_state.guadagni[user] += (m/2)
-                st.rerun()
-            else: st.error("Budget monete esaurito!")
-
-    st.subheader("🏆 La Gara del Team")
-    if not df_vendite.empty: st.bar_chart(df_vendite.groupby('Nome Agente')['Euro'].sum())
-    
-    st.subheader("📜 Le Tue Ultime Vendite")
-    mie_v = [v for v in st.session_state.db_vendite if v['Agente'] == user]
-    if mie_v: st.table(pd.DataFrame(mie_v)[['Data', 'ID Cliente', 'Euro', 'Coin']])
+                st.session_state.guadagni[user] += (m/2); st.rerun()
+            else: st.error("Budget finito")
 
 if st.sidebar.button("Logout"): st.session_state.authenticated = False; st.rerun()
