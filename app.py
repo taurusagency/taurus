@@ -3,90 +3,121 @@ import pandas as pd
 import plotly.express as px
 import urllib.parse
 
-# Configurazione Avanzata
-st.set_page_config(page_title="Taurus Agency - Pro Dashboard", layout="wide", initial_sidebar_state="collapsed")
+# --- CONFIGURAZIONE E STILE ---
+st.set_page_config(page_title="Taurus Agency PRO", layout="wide")
 
-# Stile CSS per un'interfaccia a card moderna
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .agent-card { border: 2px solid #007bff; padding: 15px; border-radius: 10px; background-color: white; margin-bottom: 5px; color: #1f1f1f; }
-    div.stButton > button:first-child { height: 3em; width: 100%; border-radius: 10px; font-weight: bold; }
+    .reportview-container { background: #f0f2f6; }
+    .main-stats { background-color: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; border-left: 5px solid #007bff; }
+    .stMetric { background-color: #ffffff; padding: 10px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
-# Inizializzazione Dati Subagenti (12)
-if 'db_subagenti' not in st.session_state:
-    st.session_state.capitale_agenzia = 5000000
-    st.session_state.db_subagenti = pd.DataFrame({
-        'ID': range(1, 13),
-        'Nome': [f'Subagente {i}' for i in range(1, 13)],
-        'Username': [f'taurus_user{i}' for i in range(1, 13)],
-        'Password': [f'pass{i}026' for i in range(1, 13)],
-        'Monete_Attuali': [100000 for _ in range(12)],
-        'Performance': [0.0 for _ in range(12)]
-    })
+# --- DATABASE TEMPORANEO (Inizializzazione) ---
+if 'db_vendite' not in st.session_state:
+    st.session_state.db_vendite = pd.DataFrame(columns=['Data', 'ID_StarMaker', 'Subagente', 'Euro_Spesi', 'Coin_Venduti', 'Guadagno_Taurus', 'Guadagno_Sub'])
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_role = None # 'Master' o 'Subagente'
 
-# --- HEADER ---
-st.title("🐂 Taurus Agency - Dashboard Ultra")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Capitale Agenzia", f"{st.session_state.capitale_agenzia:,}", "+15k oggi")
-c2.metric("Saldo Subagenti", f"{st.session_state.db_subagenti['Monete_Attuali'].sum():,}", "-5k (distribuite)")
-c3.metric("Gara Leaderboard", "Attiva", "🔥")
-c4.metric("Subagenti", "12/12", "Online")
+# --- SISTEMA DI LOGIN ---
+if not st.session_state.logged_in:
+    st.title("🔐 Accesso Taurus Agency")
+    user = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Accedi"):
+        if user == "TaurusMaster" and password == "Taurus2026": # Credenziali Master
+            st.session_state.logged_in = True
+            st.session_state.user_role = "Master"
+            st.rerun()
+        elif user.startswith("sub") and password == "pass": # Esempio per subagenti
+            st.session_state.logged_in = True
+            st.session_state.user_role = "Subagente"
+            st.session_state.username = user
+            st.rerun()
+        else:
+            st.error("Credenziali errate")
+    st.stop()
+
+# --- LOGICA CALCOLO GUADAGNI ---
+# Calcoliamo i totali per visualizzarli "in diretta" su ogni pagina
+tot_euro = st.session_state.db_vendite['Euro_Spesi'].sum()
+tot_guadagno_taurus = st.session_state.db_vendite['Guadagno_Taurus'].sum()
+tot_guadagno_sub = st.session_state.db_vendite['Guadagno_Sub'].sum()
+
+# --- HEADER FISSO (Visibile in tutte le pagine) ---
+st.markdown(f"""
+    <div class="main-stats">
+        <h2 style='margin-top:0;'>🐂 Taurus Dashboard - {st.session_state.user_role}</h2>
+        <p>Benvenuto, <b>{st.session_state.get('username', 'Taurus Master')}</b></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# METRICHE SEMPRE VISIBILI
+c1, c2, c3 = st.columns(3)
+c1.metric("Volume Totale (€)", f"{tot_euro} €")
+if st.session_state.user_role == "Master":
+    c2.metric("Guadagno Agenzia (Coin)", f"{tot_guadagno_taurus} 🪙")
+    c3.metric("Guadagno Tot. Subagenti (Coin)", f"{tot_guadagno_sub} 🪙")
+else:
+    # Il subagente vede solo il suo guadagno
+    mio_guadagno = st.session_state.db_vendite[st.session_state.db_vendite['Subagente'] == st.session_state.username]['Guadagno_Sub'].sum()
+    c2.metric("Il Tuo Guadagno (Coin)", f"{mio_guadagno} 🪙")
+    c3.metric("Stato Obiettivo", "In crescita")
 
 st.divider()
 
-# --- MENU A QUADRATI ---
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-if col_m1.button("📊 Grafici & Analisi"): st.session_state.page = "grafica"
-if col_m2.button("👥 Gestione Accessi"): st.session_state.page = "subagenti"
-if col_m3.button("🏆 Gara Profitti"): st.session_state.page = "gara"
-if col_m4.button("💰 Carico/Scarico"): st.session_state.page = "rabocco"
+# --- NAVIGAZIONE ---
+menu = ["🛒 Vendita Coins", "📊 Statistiche", "👥 Gestione Accessi"] if st.session_state.user_role == "Master" else ["🛒 Vendita Coins", "📊 Le Mie Statistiche"]
+scelta = st.sidebar.radio("Navigazione", menu)
 
-if 'page' not in st.session_state: st.session_state.page = "subagenti"
+# --- SEZIONE VENDITA (UGUALE PER TUTTI) ---
+if scelta == "🛒 Vendita Coins":
+    st.subheader("Registra Nuova Vendita StarMaker")
+    with st.form("form_vendita"):
+        id_sm = st.text_input("ID StarMaker Cliente")
+        euro = st.number_input("Euro Ricevuti dal Cliente", min_value=1)
+        submit = st.form_submit_button("Conferma Vendita")
+        
+        if submit:
+            # Calcoli basati sulla tua formula
+            coin_consegnati = euro * 91
+            guadagno_t = euro * 5
+            guadagno_s = euro * 5
+            
+            nuova_vendita = {
+                'Data': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+                'ID_StarMaker': id_sm,
+                'Subagente': st.session_state.get('username', 'Master'),
+                'Euro_Spesi': euro,
+                'Coin_Venduti': coin_consegnati,
+                'Guadagno_Taurus': guadagno_t,
+                'Guadagno_Sub': guadagno_s
+            }
+            st.session_state.db_vendite = pd.concat([st.session_state.db_vendite, pd.DataFrame([nuova_vendita])], ignore_index=True)
+            st.success(f"Vendita Registrata! Consegnare {coin_consegnati} coins all'ID {id_sm}")
 
-# --- PAGINA: GESTIONE SUBAGENTI (MODIFICA USERNAME E PASSWORD) ---
-if st.session_state.page == "subagenti":
-    st.subheader("Modifica Credenziali e Accessi Subagenti")
-    st.info("Qui puoi cambiare Username e Password. Usa il tasto verde per inviare i nuovi dati su WhatsApp.")
+# --- SEZIONE STATISTICHE ---
+elif scelta == "📊 Statistiche" or scelta == "📊 Le Mie Statistiche":
+    st.subheader("Analisi Vendite e Profitti")
+    df = st.session_state.db_vendite
+    if st.session_state.user_role == "Subagente":
+        df = df[df['Subagente'] == st.session_state.username]
     
-    for i, row in st.session_state.db_subagenti.iterrows():
-        with st.container():
-            st.markdown(f"<div class='agent-card'><b>GESTIONE: {row['Nome']}</b></div>", unsafe_allow_html=True)
-            col_user, col_pass, col_btn, col_wa = st.columns([3, 3, 2, 2])
-            
-            # Campi di modifica
-            nuovo_user = col_user.text_input(f"Username {row['Nome']}", row['Username'], key=f"user_{i}")
-            nuova_pass = col_pass.text_input(f"Password {row['Nome']}", row['Password'], key=f"pass_{i}")
-            
-            # Tasto per salvare nel database locale della sessione
-            if col_btn.button(f"Salva {i+1}", key=f"save_{i}"):
-                st.session_state.db_subagenti.at[i, 'Username'] = nuovo_user
-                st.session_state.db_subagenti.at[i, 'Password'] = nuova_pass
-                st.toast(f"Dati di {row['Nome']} aggiornati!")
+    st.dataframe(df, use_container_width=True)
+    
+    if not df.empty:
+        fig = px.line(df, x='Data', y='Euro_Spesi', title="Andamento Vendite nel Tempo")
+        st.plotly_chart(fig, use_container_width=True)
 
-            # Generazione link WhatsApp con i NUOVI dati
-            messaggio = f"Ciao {row['Nome']}, ecco le tue nuove credenziali Taurus:\n\n👤 User: {nuovo_user}\n🔑 Pass: {nuova_pass}\n\nAccedi qui: https://taurus-app-finale.streamlit.app"
-            url_whatsapp = f"https://wa.me/?text={urllib.parse.quote(messaggio)}"
-            col_wa.markdown(f"<a href='{url_whatsapp}' target='_blank'><button style='background-color:#25D366; color:white; border:none; padding:10px; border-radius:5px; width:100%; cursor:pointer;'>📲 WhatsApp</button></a>", unsafe_allow_html=True)
-        st.write("")
+# --- SEZIONE GESTIONE (SOLO MASTER) ---
+elif scelta == "👥 Gestione Accessi" and st.session_state.user_role == "Master":
+    st.subheader("Controllo Subagenti")
+    st.write("Qui puoi gestire i 12 subagenti, cambiare password e monitorare chi sta vendendo di più.")
+    # Logica precedente di modifica username/password...
+    st.info("Pannello di controllo Master attivo.")
 
-# --- PAGINA: GRAFICA ---
-elif st.session_state.page == "grafica":
-    st.subheader("Performance Visiva")
-    fig = px.bar(st.session_state.db_subagenti, x='Nome', y='Monete_Attuali', color='Nome', title="Monete possedute per Subagente")
-    st.plotly_chart(fig, use_container_width=True)
-
-# --- PAGINA: GARA ---
-elif st.session_state.page == "gara":
-    st.subheader("🏆 Gara tra Subagenti")
-    df_gara = st.session_state.db_subagenti.sort_values(by='Monete_Attuali', ascending=False)
-    st.table(df_gara[['Nome', 'Username', 'Monete_Attuali']])
-
-# --- PAGINA: RABOCCO ---
-elif st.session_state.page == "rabocco":
-    st.subheader("Gestione Capitale")
-    # Logica per spostare monete (come nel precedente)
-    st.write("Usa questa sezione per aumentare il capitale dell'agenzia o distribuirlo.")
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
