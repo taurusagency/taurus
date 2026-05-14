@@ -6,13 +6,14 @@ from PIL import Image
 # Configurazione Iniziale
 st.set_page_config(page_title="Taurus Agency Gold", layout="wide")
 
-# --- 1. CONFIGURAZIONE ACCESSI (Massimo Master) ---
+# --- 1. CONFIGURAZIONE ACCESSI ---
+# Ho messo tutto in minuscolo qui per evitare errori di battitura
 MASTER_EMAIL = "marchiano.massimo@gmail.com"
 MASTER_PASSWORD = "Taurus2026"
 
-# Elenco Subagenti Autorizzati (Queen Rimossa Completamente)
+# Elenco Subagenti Autorizzati
 SUBAGENTI = [
-    "Giuseppe.papangelo@outlook.it",
+    "giuseppe.papangelo@outlook.it",
     "starmakertaurususa2026@gmail.com",
     "fabio60322@gmail.com",
     "elenamirenda1@gmail.com"
@@ -24,11 +25,12 @@ if "auth" not in st.session_state:
 # --- SCHERMATA LOGIN ---
 if not st.session_state.auth:
     st.title("🏆 Taurus Agency - Portale Massimo")
-    email_in = st.text_input("Inserisci la tua Email Aziendale")
+    # .strip().lower() serve a pulire spazi vuoti e togliere le maiuscole
+    email_in = st.text_input("Inserisci la tua Email Aziendale").strip().lower()
     pass_in = st.text_input("Password", type="password")
     
     if st.button("Entra nel Sistema"):
-        # Accesso MASSIMO (Il Capo)
+        # Accesso MASSIMO
         if email_in == MASTER_EMAIL and pass_in == MASTER_PASSWORD:
             st.session_state.auth = True
             st.session_state.user = MASTER_EMAIL
@@ -41,7 +43,7 @@ if not st.session_state.auth:
             st.session_state.is_master = False
             st.rerun()
         else:
-            st.error("Accesso negato. Solo personale autorizzato.")
+            st.error("Accesso negato. Controlla email e password (TaurusSub2026).")
     st.stop()
 
 # --- 2. DATABASE VASI COMUNICANTI ---
@@ -75,7 +77,6 @@ with st.sidebar:
 if st.session_state.is_master:
     st.title(f"🚀 Taurus Control Center - Benvenuto Massimo")
     
-    # Classifica Gara tra i Subagenti
     st.subheader("🏁 Gara Agenti (Top Performance)")
     df_sub = st.session_state.data[st.session_state.data['Agente'] != MASTER_EMAIL]
     
@@ -101,7 +102,7 @@ else:
     idx = st.session_state.data['Agente'] == st.session_state.user
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("Mio Budget", f"{st.session_state.data.loc[idx, 'Monete_Budget'].values[0]}")
+    c1.metric("Budget Monete", f"{st.session_state.data.loc[idx, 'Monete_Budget'].values[0]}")
     c2.metric("Vendite (€)", f"{st.session_state.data.loc[idx, 'Volume_Euro'].values[0]}")
     c3.metric("Mio Margine", f"{st.session_state.data.loc[idx, 'Guadagno_Monete'].values[0]}")
 
