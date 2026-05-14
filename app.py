@@ -41,44 +41,31 @@ if not st.session_state.auth:
         else: st.error("Credenziali Errate.")
     st.stop()
 
-# --- 3. LOGICA VISUALIZZAZIONE TABELLONE (CORREZIONE image_17.png) ---
+# --- 3. LOGICA DATI ---
 idx_u = shared_db['Agente'] == st.session_state.user
 guadagno_c = int(shared_db.loc[idx_u, 'Guadagno_Coins'].values[0])
 guadagno_e = guadagno_c / 5 
 coins_disp = int(shared_db.loc[idx_u, 'Coins_Disponibili'].values[0])
 euro_debito = shared_db.loc[idx_u, 'Euro_Da_Inviare'].values[0]
 
-# Funzione per disegnare le barre di energia senza errori grafici
-def draw_energy_bar(current, label, is_master_bar=False):
-    max_val = 1000000 if is_master_bar else 50000
-    percent = min(100, int((current / max_val) * 100))
-    color = "#00FF00" if percent > 20 else "#FF4B4B"
-    # Codice HTML semplificato per massimizzare la compatibilità
-    bar_html = f"""
-    <div style="width: 100%; text-align: left; margin-top: 10px;">
-        <span style="color: #AAA; font-size: 14px;">{label}: {current} COINS</span>
-        <div style="background-color: #444; border-radius: 10px; width: 100%; height: 12px; margin-top: 5px;">
-            <div style="background-color: {color}; width: {percent}%; height: 12px; border-radius: 10px;"></div>
-        </div>
-    </div>
-    """
-    return bar_html
-
+# --- 4. TABELLONE NERO (Grafica Pulita) ---
 titolo = "🏆 MIA PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 MIO GUADAGNO PERSONALE"
 
-# Tabellone principale
-tab_html = f"""
+st.markdown(f"""
 <div style="background-color: #1e1e1e; padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; color: white;">
     <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">{titolo}</p>
     <h1 style="font-size: 50px; margin: 0;">{guadagno_c} <span style="font-size: 20px;">COINS</span></h1>
     <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">GUADAGNATI</span></h2>
-    {draw_energy_bar(coins_disp, "ENERGIA BUDGET", st.session_state.is_master)}
-"""
-if not st.session_state.is_master:
-    tab_html += f'<h3 style="color: #FF4B4B; margin-top: 15px;">💰 EURO DA INVIARE: € {euro_debito:.2f}</h3>'
-tab_html += "</div>"
+</div>
+""", unsafe_allow_html=True)
 
-st.markdown(tab_html, unsafe_allow_html=True)
+# Barra energia nel tabellone (Usiamo componente nativo per image_18.png)
+st.write(f"**🔋 ENERGIA BUDGET DISPONIBILE: {coins_disp} COINS**")
+max_v = 1000000 if st.session_state.is_master else 50000
+st.progress(min(1.0, coins_disp / max_v))
+
+if not st.session_state.is_master:
+    st.markdown(f'<h3 style="color: #FF4B4B; text-align: right;">💰 EURO DA INVIARE: € {euro_debito:.2f}</h3>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
@@ -88,7 +75,7 @@ with st.sidebar:
         st.session_state.auth = False
         st.rerun()
 
-# --- 4. PANNELLO MASTER ---
+# --- 5. PANNELLO MASTER ---
 if st.session_state.is_master:
     st.title("🚀 Taurus Master Control")
     
@@ -97,7 +84,8 @@ if st.session_state.is_master:
     subs = shared_db[shared_db['Agente'] != "MassimoMaster"]
     for i, row in enumerate(subs.itertuples()):
         with cols[i % 3]:
-            st.markdown(draw_energy_bar(row.Coins_Disponibili, f"Energia {row.Agente}"), unsafe_allow_html=True)
+            st.write(f"⚡ {row.Agente}: {int(row.Coins_Disponibili)} COINS")
+            st.progress(min(1.0, row.Coins_Disponibili / 50000))
 
     with st.expander("💸 Gestione Depositi (COINS)"):
         target = st.selectbox("Seleziona Conto", shared_db['Agente'])
@@ -109,7 +97,7 @@ if st.session_state.is_master:
     st.write("### 📊 Riepilogo Debiti")
     st.dataframe(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Euro_Da_Inviare', 'Guadagno_Coins', 'Vendite_Totali_Coins']], use_container_width=True)
 
-# --- 5. PANNELLO SUBAGENTE ---
+# --- 6. PANNELLO SUBAGENTE ---
 else:
     st.title(f"📱 Console Agente: {st.session_state.user}")
     with st.expander("💳 Registra Invio Denaro"):
@@ -132,7 +120,7 @@ else:
             st.rerun()
         else: st.error("Energia insufficiente!")
 
-# --- 6. GARA ---
+# --- 7. GARA ---
 st.divider()
 st.subheader("🏁 Classifica Gara Taurus")
 st.table(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Vendite_Totali_Coins']].sort_values(by='Vendite_Totali_Coins', ascending=False))
