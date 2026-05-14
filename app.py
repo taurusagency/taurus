@@ -133,3 +133,32 @@ for i, row in st.session_state.db_agenti.iterrows():
         st.markdown("</div>", unsafe_allow_html=True)
 
 st.sidebar.button("Logout", on_click=lambda: st.session_state.pop('auth'))
+import streamlit as st
+
+# Funzione per calcolare il profitto
+def calcola_profitti(coin_venduti, is_subagente=False):
+    # Ogni Euro venduto genera 10 monete di margine totale
+    euro_equivalenti = coin_venduti / 91
+    margine_totale_coin = euro_equivalenti * 10
+    
+    if is_subagente:
+        # Ripartizione 50/50 tra subagente e agenzia
+        guadagno_coin = margine_totale_coin / 2
+    else:
+        # Se vende l'agenzia direttamente, prende tutto il margine (10 coin)
+        # Se vende il subagente, l'agenzia prende comunque 5 coin
+        guadagno_coin = margine_totale_coin 
+
+    guadagno_euro = guadagno_coin / 101
+    return guadagno_coin, guadagno_euro
+
+# Widget in alto a destra
+header_col1, header_col2 = st.columns([3, 1])
+with header_col2:
+    st.markdown("""
+    <div style="border: 1px solid #e6e6e6; border-radius: 10px; padding: 10px; background-color: #f9f9f9;">
+        <h4 style="margin:0;">Profitto Totale</h4>
+        <p style="margin:0; color: green;"><b>{:.2f} Coin</b></p>
+        <p style="margin:0; color: blue;"><b>{:.2f} €</b></p>
+    </div>
+    """.format(totale_coin, totale_euro), unsafe_allow_html=True)
