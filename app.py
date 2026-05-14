@@ -7,15 +7,14 @@ import urllib.parse
 # --- CONFIGURAZIONE ESTETICA ---
 st.set_page_config(page_title="Taurus Agency - Top 1 StarMaker", layout="wide")
 
-# --- 1. GESTIONE ACCESSI SEMPLIFICATA ---
-# Ho sostituito Giuseppe con Terry come richiesto
+# --- 1. GESTIONE ACCESSI (Ripristinato Queen) ---
 UTENTI = {
     "MassimoMaster": "Taurus2026",
-    "Terry": "Taurus01", # Terry ora prende il posto di Giuseppe
+    "Terry": "Taurus01", 
     "Fabio": "Taurus02",
     "Elena": "Taurus03",
     "USA_Agent": "Taurus04",
-    "Queen": "Taurus05"
+    "Queen": "Taurus05" # Nome ripristinato correttamente
 }
 
 if "auth" not in st.session_state:
@@ -26,7 +25,8 @@ if not st.session_state.auth:
     st.title("🐂 Taurus Agency - Accesso Collaboratori")
     st.write("Benvenuto nell'Agenzia Top 1 nella vendita di monete StarMaker.")
     
-    user_in = st.text_input("Username")
+    # .strip() serve a ignorare eventuali spazi che il telefono mette dopo il nome
+    user_in = st.text_input("Username").strip() 
     pwd_in = st.text_input("Password", type="password")
     
     if st.button("Accedi"):
@@ -36,7 +36,7 @@ if not st.session_state.auth:
             st.session_state.is_master = (user_in == "MassimoMaster")
             st.rerun()
         else:
-            st.error("Username o Password errati. Riprova.")
+            st.error("Username o Password errati. Controlla le maiuscole (es. Queen)!")
     st.stop()
 
 # --- 2. DATABASE IN TEMPO REALE ---
@@ -50,7 +50,7 @@ if 'db' not in st.session_state:
     st.session_state.id_privati = [] 
     st.session_state.foto_profili = {}
 
-# --- 3. BARRA LATERALE (Sidebar) ---
+# --- 3. BARRA LATERALE ---
 with st.sidebar:
     st.header(f"👤 {st.session_state.user}")
     if st.session_state.user in st.session_state.foto_profili:
@@ -70,7 +70,7 @@ with st.sidebar:
 # --- 4. AREA RISULTATO LAVORO (In alto a destra) ---
 idx_u = st.session_state.db['Agente'] == st.session_state.user
 guadagno_c = st.session_state.db.loc[idx_u, 'Guadagno_Coins'].values[0]
-guadagno_e = (guadagno_c / 5) * 0.5 # Margine di 0.50€ ogni 5 coins guadagnate
+guadagno_e = (guadagno_c / 5) * 0.5 
 
 st.markdown(f"""
     <div style="text-align: right; background-color: #f0f2f6; padding: 10px; border-radius: 10px; border-left: 5px solid #ff4b4b;">
@@ -79,7 +79,6 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# Tasto Riscatto WhatsApp
 if not st.session_state.is_master:
     msg_wa = f"Ciao Massimo, richiedo riscatto provvigione Taurus per {st.session_state.user}: {guadagno_c} Coins (€ {guadagno_e:.2f})"
     url_wa = f"https://wa.me/393663749350?text={urllib.parse.quote(msg_wa)}"
@@ -89,8 +88,7 @@ if not st.session_state.is_master:
 if st.session_state.is_master:
     st.title("🚀 Taurus Control Center - Massimo Master")
     
-    # Gestione Budget
-    with st.expander("💸 Gestione Vasi Comunicanti (Sposta Monete)"):
+    with st.expander("💸 Gestione Budget Monete (Sposta Monete)"):
         col_m1, col_m2 = st.columns(2)
         target = col_m1.selectbox("Seleziona Agente", st.session_state.db['Agente'])
         quantita = col_m2.number_input("Somma Monete (+ aggiungi, - togli)", step=100.0)
@@ -98,26 +96,23 @@ if st.session_state.is_master:
             st.session_state.db.loc[st.session_state.db['Agente'] == target, 'Coins_Disponibili'] += quantita
             st.success(f"Budget di {target} aggiornato correttamente.")
 
-    # Reset Guadagni
     with st.expander("♻️ Reset Provvigioni"):
         target_r = st.selectbox("Seleziona Agente da pagare", st.session_state.db['Agente'][1:])
         if st.button("Resetta Guadagno a Zero"):
             st.session_state.db.loc[st.session_state.db['Agente'] == target_r, 'Guadagno_Coins'] = 0.0
             st.warning(f"Il contatore di {target_r} è stato azzerato.")
 
-    # Registro Privato ID
     st.subheader("🕵️ Registro ID StarMaker (Privato)")
     st.dataframe(pd.DataFrame(st.session_state.id_privati), use_container_width=True)
 
 # --- 6. PANNELLO SUBAGENTE ---
 else:
     st.title("🛒 Caricamento Monete")
-    
     st.metric("Il tuo Budget Disponibile", f"{st.session_state.db.loc[idx_u, 'Coins_Disponibili'].values[0]} Coins")
     
     st.divider()
     id_sm = st.text_input("Inserisci ID StarMaker del cliente")
-    euro_v = st.number_input("Euro incassati (€)", min_value=0.0, step=10.0)
+    euro_v = st.number_input("Euro incassati dal cliente (€)", min_value=0.0, step=10.0)
     
     if st.button("🚀 Conferma e Carica"):
         c_erogate = int(euro_v * 91)
