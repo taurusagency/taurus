@@ -2,123 +2,149 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from PIL import Image
+import urllib.parse
 
-# Configurazione Iniziale
-st.set_page_config(page_title="Taurus Agency Gold", layout="wide")
+# --- CONFIGURAZIONE ESTETICA ---
+st.set_page_config(page_title="Taurus Agency - Top 1 StarMaker", layout="wide")
 
-# --- 1. CONFIGURAZIONE ACCESSI ---
-# Ho messo tutto in minuscolo qui per evitare errori di battitura
-MASTER_EMAIL = "marchiano.massimo@gmail.com"
-MASTER_PASSWORD = "Taurus2026"
-
-# Elenco Subagenti Autorizzati
-SUBAGENTI = [
-    "giuseppe.papangelo@outlook.it",
-    "starmakertaurususa2026@gmail.com",
-    "fabio60322@gmail.com",
-    "elenamirenda1@gmail.com"
-]
+# --- 1. GESTIONE ACCESSI SEMPLIFICATA ---
+# Ho sostituito Giuseppe con Terry come richiesto
+UTENTI = {
+    "MassimoMaster": "Taurus2026",
+    "Terry": "Taurus01", # Terry ora prende il posto di Giuseppe
+    "Fabio": "Taurus02",
+    "Elena": "Taurus03",
+    "USA_Agent": "Taurus04",
+    "Queen": "Taurus05"
+}
 
 if "auth" not in st.session_state:
     st.session_state.auth = False
 
-# --- SCHERMATA LOGIN ---
+# Schermata di Login
 if not st.session_state.auth:
-    st.title("🏆 Taurus Agency - Portale Massimo")
-    # .strip().lower() serve a pulire spazi vuoti e togliere le maiuscole
-    email_in = st.text_input("Inserisci la tua Email Aziendale").strip().lower()
-    pass_in = st.text_input("Password", type="password")
+    st.title("🐂 Taurus Agency - Accesso Collaboratori")
+    st.write("Benvenuto nell'Agenzia Top 1 nella vendita di monete StarMaker.")
     
-    if st.button("Entra nel Sistema"):
-        # Accesso MASSIMO
-        if email_in == MASTER_EMAIL and pass_in == MASTER_PASSWORD:
+    user_in = st.text_input("Username")
+    pwd_in = st.text_input("Password", type="password")
+    
+    if st.button("Accedi"):
+        if user_in in UTENTI and UTENTI[user_in] == pwd_in:
             st.session_state.auth = True
-            st.session_state.user = MASTER_EMAIL
-            st.session_state.is_master = True
-            st.rerun()
-        # Accesso SUBAGENTI
-        elif email_in in SUBAGENTI and pass_in == "TaurusSub2026":
-            st.session_state.auth = True
-            st.session_state.user = email_in
-            st.session_state.is_master = False
+            st.session_state.user = user_in
+            st.session_state.is_master = (user_in == "MassimoMaster")
             st.rerun()
         else:
-            st.error("Accesso negato. Controlla email e password (TaurusSub2026).")
+            st.error("Username o Password errati. Riprova.")
     st.stop()
 
-# --- 2. DATABASE VASI COMUNICANTI ---
-if 'data' not in st.session_state:
-    tutti = [MASTER_EMAIL] + SUBAGENTI
-    st.session_state.data = pd.DataFrame({
-        'Agente': tutti,
-        'Volume_Euro': [0.0] * len(tutti),
-        'Monete_Budget': [1000000.0 if a == MASTER_EMAIL else 0.0 for a in tutti],
-        'Guadagno_Monete': [0] * len(tutti)
+# --- 2. DATABASE IN TEMPO REALE ---
+if 'db' not in st.session_state:
+    st.session_state.db = pd.DataFrame({
+        'Agente': list(UTENTI.keys()),
+        'Coins_Disponibili': [1000000.0 if u == "MassimoMaster" else 0.0 for u in UTENTI.keys()],
+        'Guadagno_Coins': [0.0] * len(UTENTI),
+        'Vendite_Totali_Coins': [0.0] * len(UTENTI)
     })
-    st.session_state.avatars = {}
+    st.session_state.id_privati = [] 
+    st.session_state.foto_profili = {}
 
-# --- 3. PROFILO E FOTO (Sidebar) ---
+# --- 3. BARRA LATERALE (Sidebar) ---
 with st.sidebar:
     st.header(f"👤 {st.session_state.user}")
-    if st.session_state.user not in st.session_state.avatars:
-        st.session_state.avatars[st.session_state.user] = "https://www.w3schools.com/howto/img_avatar.png"
-    st.image(st.session_state.avatars[st.session_state.user], width=100)
+    if st.session_state.user in st.session_state.foto_profili:
+        st.image(st.session_state.foto_profili[st.session_state.user], width=100)
     
-    foto = st.file_uploader("Aggiorna la tua foto profilo", type=['png', 'jpg'])
-    if foto:
-        st.session_state.avatars[st.session_state.user] = Image.open(foto)
+    up_foto = st.file_uploader("Carica/Cambia la tua foto", type=['jpg', 'png'])
+    if up_foto:
+        st.session_state.foto_profili[st.session_state.user] = Image.open(up_foto)
+    
+    st.divider()
+    if st.button("🔄 Refresh Dati"):
         st.rerun()
-    
     if st.button("🚪 Esci"):
         st.session_state.auth = False
         st.rerun()
 
-# --- 4. PANNELLO MASTER (Massimo) ---
+# --- 4. AREA RISULTATO LAVORO (In alto a destra) ---
+idx_u = st.session_state.db['Agente'] == st.session_state.user
+guadagno_c = st.session_state.db.loc[idx_u, 'Guadagno_Coins'].values[0]
+guadagno_e = (guadagno_c / 5) * 0.5 # Margine di 0.50€ ogni 5 coins guadagnate
+
+st.markdown(f"""
+    <div style="text-align: right; background-color: #f0f2f6; padding: 10px; border-radius: 10px; border-left: 5px solid #ff4b4b;">
+        <h3 style="margin: 0;">💰 Mio Guadagno: {guadagno_c} Coins</h3>
+        <p style="margin: 0; color: green; font-weight: bold; font-size: 18px;">€ {guadagno_e:.2f}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Tasto Riscatto WhatsApp
+if not st.session_state.is_master:
+    msg_wa = f"Ciao Massimo, richiedo riscatto provvigione Taurus per {st.session_state.user}: {guadagno_c} Coins (€ {guadagno_e:.2f})"
+    url_wa = f"https://wa.me/393663749350?text={urllib.parse.quote(msg_wa)}"
+    st.link_button("📩 Richiedi Pagamento (WhatsApp)", url_wa)
+
+# --- 5. PANNELLO MASTER (MASSIMO) ---
 if st.session_state.is_master:
-    st.title(f"🚀 Taurus Control Center - Benvenuto Massimo")
+    st.title("🚀 Taurus Control Center - Massimo Master")
     
-    st.subheader("🏁 Gara Agenti (Top Performance)")
-    df_sub = st.session_state.data[st.session_state.data['Agente'] != MASTER_EMAIL]
-    
-    if df_sub['Volume_Euro'].sum() > 0:
-        fig = px.bar(df_sub, x='Agente', y='Volume_Euro', color='Volume_Euro', 
-                     text_auto=True, color_continuous_scale='Reds')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    st.subheader("📊 Riepilogo Totale Agenzia")
-    st.dataframe(st.session_state.data, use_container_width=True)
+    # Gestione Budget
+    with st.expander("💸 Gestione Vasi Comunicanti (Sposta Monete)"):
+        col_m1, col_m2 = st.columns(2)
+        target = col_m1.selectbox("Seleziona Agente", st.session_state.db['Agente'])
+        quantita = col_m2.number_input("Somma Monete (+ aggiungi, - togli)", step=100.0)
+        if st.button("Aggiorna Budget Agente"):
+            st.session_state.db.loc[st.session_state.db['Agente'] == target, 'Coins_Disponibili'] += quantita
+            st.success(f"Budget di {target} aggiornato correttamente.")
 
-    with st.expander("💸 Invia Monete ai Subagenti"):
-        dest = st.selectbox("Seleziona Agente", SUBAGENTI)
-        qty = st.number_input("Quantità Monete", min_value=0)
-        if st.button("Esegui Ricarica"):
-            st.session_state.data.loc[st.session_state.data['Agente'] == MASTER_EMAIL, 'Monete_Budget'] -= qty
-            st.session_state.data.loc[st.session_state.data['Agente'] == dest, 'Monete_Budget'] += qty
-            st.success(f"Ricarica di {qty} monete completata!")
+    # Reset Guadagni
+    with st.expander("♻️ Reset Provvigioni"):
+        target_r = st.selectbox("Seleziona Agente da pagare", st.session_state.db['Agente'][1:])
+        if st.button("Resetta Guadagno a Zero"):
+            st.session_state.db.loc[st.session_state.db['Agente'] == target_r, 'Guadagno_Coins'] = 0.0
+            st.warning(f"Il contatore di {target_r} è stato azzerato.")
 
-# --- 5. PANNELLO SUBAGENTE ---
+    # Registro Privato ID
+    st.subheader("🕵️ Registro ID StarMaker (Privato)")
+    st.dataframe(pd.DataFrame(st.session_state.id_privati), use_container_width=True)
+
+# --- 6. PANNELLO SUBAGENTE ---
 else:
-    st.title(f"📱 Dashboard Operativa")
-    idx = st.session_state.data['Agente'] == st.session_state.user
+    st.title("🛒 Caricamento Monete")
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Budget Monete", f"{st.session_state.data.loc[idx, 'Monete_Budget'].values[0]}")
-    c2.metric("Vendite (€)", f"{st.session_state.data.loc[idx, 'Volume_Euro'].values[0]}")
-    c3.metric("Mio Margine", f"{st.session_state.data.loc[idx, 'Guadagno_Monete'].values[0]}")
-
+    st.metric("Il tuo Budget Disponibile", f"{st.session_state.db.loc[idx_u, 'Coins_Disponibili'].values[0]} Coins")
+    
     st.divider()
-    euro = st.number_input("Euro ricevuti dal cliente (€)", min_value=0.0)
-    if euro > 0:
-        monete = int(euro * 91)
-        margine = int(euro * 5)
-        st.info(f"👉 Erogherai {monete} monete. Il tuo guadagno: {margine} monete.")
+    id_sm = st.text_input("Inserisci ID StarMaker del cliente")
+    euro_v = st.number_input("Euro incassati (€)", min_value=0.0, step=10.0)
+    
+    if st.button("🚀 Conferma e Carica"):
+        c_erogate = int(euro_v * 91)
+        m_agente = int(euro_v * 5)
+        m_master = int(euro_v * 5)
         
-        if st.button("Conferma Operazione"):
-            if st.session_state.data.loc[idx, 'Monete_Budget'].values[0] >= monete:
-                st.session_state.data.loc[idx, 'Monete_Budget'] -= monete
-                st.session_state.data.loc[idx, 'Volume_Euro'] += euro
-                st.session_state.data.loc[idx, 'Guadagno_Monete'] += margine
-                st.balloons()
-                st.rerun()
-            else:
-                st.error("Budget insufficiente! Chiedi ricarica a Massimo.")
+        budget_attuale = st.session_state.db.loc[idx_u, 'Coins_Disponibili'].values[0]
+        
+        if budget_attuale >= c_erogate:
+            st.session_state.db.loc[idx_u, 'Coins_Disponibili'] -= c_erogate
+            st.session_state.db.loc[idx_u, 'Guadagno_Coins'] += m_agente
+            st.session_state.db.loc[idx_u, 'Vendite_Totali_Coins'] += c_erogate
+            st.session_state.db.loc[st.session_state.db['Agente'] == "MassimoMaster", 'Guadagno_Coins'] += m_master
+            
+            st.session_state.id_privati.append({
+                "Data": pd.Timestamp.now().strftime("%d/%m %H:%M"),
+                "Agente": st.session_state.user,
+                "ID_StarMaker": id_sm,
+                "Coins": c_erogate
+            })
+            st.balloons()
+            st.rerun()
+        else:
+            st.error("Budget insufficiente! Contatta Massimo.")
+
+# --- 7. GARA PUBBLICA ---
+st.divider()
+st.subheader("🏁 Gara Subagenti Taurus - Classifica Vendite")
+classifica = st.session_state.db[st.session_state.db['Agente'] != "MassimoMaster"][['Agente', 'Vendite_Totali_Coins']]
+st.table(classifica.sort_values(by='Vendite_Totali_Coins', ascending=False))
