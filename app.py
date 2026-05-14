@@ -5,13 +5,13 @@ import urllib.parse
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Taurus Agency - Top 1 StarMaker", layout="wide")
 
-# --- 1. MEMORIA CONDIVISA ---
+# --- 1. DATABASE CONDIVISO ---
 @st.cache_resource
 def get_shared_db():
     utenti = ["MassimoMaster", "Terry", "Fabio", "Elena", "USA_Agent", "Queen", "Libidus"]
     return pd.DataFrame({
         'Agente': utenti,
-        'Coins_Disponibili': [1000000.0 if u == "MassimoMaster" else 0.0 for u in utenti],
+        'Coins_Disponibili': [0.0] * len(utenti), # Parte da zero per il carico reale
         'Guadagno_Coins': [0.0] * len(utenti),
         'Vendite_Totali_Coins': [0.0] * len(utenti),
         'Euro_Da_Inviare': [0.0] * len(utenti) 
@@ -19,7 +19,7 @@ def get_shared_db():
 
 shared_db = get_shared_db()
 
-# --- 2. GESTIONE ACCESSI ---
+# --- 2. ACCESSI ---
 UTENTI_PWD = {
     "MassimoMaster": "Taurus2026",
     "Terry": "Taurus01", "Fabio": "Taurus02", "Elena": "Taurus03", 
@@ -41,101 +41,91 @@ if not st.session_state.auth:
         else: st.error("Credenziali Errate.")
     st.stop()
 
-# --- 3. LOGICA DATI ---
+# --- 3. LOGICA COLORI ENERGIA ---
 idx_u = shared_db['Agente'] == st.session_state.user
+coins_disp = int(shared_db.loc[idx_u, 'Coins_Disponibili'].values[0])
 guadagno_c = int(shared_db.loc[idx_u, 'Guadagno_Coins'].values[0])
 guadagno_e = guadagno_c / 5 
-coins_disp = int(shared_db.loc[idx_u, 'Coins_Disponibili'].values[0])
 euro_debito = shared_db.loc[idx_u, 'Euro_Da_Inviare'].values[0]
 
-# --- 4. TABELLONE NERO GRAFICO ---
-titolo = "🏆 MIA PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 MIO GUADAGNO PERSONALE"
+def get_color(current, is_master=False):
+    ref = 1000000 if is_master else 50000
+    perc = (current / ref)
+    if perc > 0.5: return "#00FF00" # VERDE
+    if perc > 0.2: return "#FFFF00" # GIALLO
+    return "#FF4B4B" # ROSSO
+
+# --- 4. TABELLONE SUPERIORE ---
+titolo = "🏆 PROVVIGIONE AGENZIA" if st.session_state.is_master else "🏆 GUADAGNO MATURATO"
 
 st.markdown(f"""
-<div style="background-color: #1e1e1e; padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; color: white; font-family: sans-serif;">
+<div style="background-color: #1e1e1e; padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; color: white;">
     <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">{titolo}</p>
     <h1 style="font-size: 50px; margin: 0;">{guadagno_c} <span style="font-size: 20px;">COINS</span></h1>
-    <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">GUADAGNATI</span></h2>
+    <h2 style="color: #00FF00; font-size: 35px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 18px;">EFFETTIVI</span></h2>
 </div>
 """, unsafe_allow_html=True)
 
-st.write(f"**🔋 ENERGIA BUDGET DISPONIBILE: {coins_disp} COINS**")
-max_v = 1000000 if st.session_state.is_master else 50000
-st.progress(min(1.0, coins_disp / max_v))
+# BARRA ENERGIA DINAMICA
+c_main = get_color(coins_disp, st.session_state.is_master)
+p_main = min(100, int((coins_disp / (1000000 if st.session_state.is_master else 50000)) * 100))
+
+st.write(f"**🔋 ENERGIA DISPONIBILE: {coins_disp} COINS**")
+st.markdown(f"""
+    <div style="background-color: #444; border-radius: 10px; width: 100%; height: 15px;">
+        <div style="background-color: {c_main}; width: {p_main}%; height: 15px; border-radius: 10px;"></div>
+    </div>
+""", unsafe_allow_html=True)
 
 if not st.session_state.is_master:
     st.markdown(f'<h3 style="color: #FF4B4B; text-align: right;">💰 EURO DA INVIARE: € {euro_debito:.2f}</h3>', unsafe_allow_html=True)
 
-# Sidebar
-with st.sidebar:
-    st.header(f"👤 {st.session_state.user}")
-    if st.button("🔄 Refresh"): st.rerun()
-    if st.button("🚪 Esci"):
-        st.session_state.auth = False
-        st.rerun()
-
-# --- 5. PANNELLO MASTER (LOGICA VASI COMUNICANTI) ---
+# --- 5. PANNELLO MASTER ---
 if st.session_state.is_master:
     st.title("🚀 Taurus Master Control")
     
-    st.subheader("🔋 Monitoraggio Energia Subagenti")
+    with st.expander("📦 CARICO REALE MONETE (Acquisto Agenzia)"):
+        nuovo_carico = st.number_input("Inserisci Coins acquistati", min_value=0.0, step=10000.0)
+        if st.button("Aggiorna Magazzino Principale"):
+            shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] += nuovo_carico
+            st.rerun()
+
+    st.subheader("🔋 Stato Energie Subagenti")
     cols = st.columns(3)
     subs = shared_db[shared_db['Agente'] != "MassimoMaster"]
     for i, row in enumerate(subs.itertuples()):
         with cols[i % 3]:
+            col_s = get_color(row.Coins_Disponibili)
+            per_s = min(100, int((row.Coins_Disponibili / 50000) * 100))
             st.write(f"⚡ {row.Agente}: {int(row.Coins_Disponibili)} COINS")
-            st.progress(min(1.0, row.Coins_Disponibili / 50000))
+            st.markdown(f'<div style="background-color:#444;width:100%;height:8px;"><div style="background-color:{col_s};width:{per_s}%;height:8px;"></div></div>', unsafe_allow_html=True)
 
-    with st.expander("💸 Gestione Depositi (Vasi Comunicanti)"):
-        target = st.selectbox("Seleziona Conto Agente", [u for u in UTENTI_PWD.keys() if u != "MassimoMaster"])
-        quant = st.number_input("Quantità COINS da trasferire", min_value=0.0, step=1000.0)
-        
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.button("⬆️ Carica Agente (Togli a Master)"):
-                if shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'].values[0] >= quant:
-                    shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] += quant
-                    shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] -= quant
-                    st.success(f"Trasferiti {quant} coins a {target}")
-                    st.rerun()
-                else: st.error("Saldo Master insufficiente!")
-        
-        with col_btn2:
-            if st.button("⬇️ Scarica Agente (Rendi a Master)"):
-                if shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'].values[0] >= quant:
-                    shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] -= quant
-                    shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] += quant
-                    st.success(f"Recuperati {quant} coins da {target}")
-                    st.rerun()
-                else: st.error(f"L'agente {target} non ha abbastanza coins!")
-    
-    st.write("### 📊 Riepilogo Debiti")
-    st.dataframe(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Euro_Da_Inviare', 'Guadagno_Coins', 'Vendite_Totali_Coins']], use_container_width=True)
-
-# --- 6. PANNELLO SUBAGENTE ---
-else:
-    st.title(f"📱 Console Agente: {st.session_state.user}")
-    with st.expander("💳 Registra Invio Denaro"):
-        invio = st.number_input("Importo versato (€)", min_value=0.0)
-        if st.button("✅ Conferma"):
-            shared_db.loc[idx_u, 'Euro_Da_Inviare'] -= invio
+    with st.expander("💸 Spostamento Vasi Comunicanti"):
+        target = st.selectbox("Agente", [u for u in UTENTI_PWD.keys() if u != "MassimoMaster"])
+        monto = st.number_input("Quantità", min_value=0.0, step=1000.0)
+        c1, c2 = st.columns(2)
+        if c1.button("⬆️ Carica Agente"):
+            if shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'].values[0] >= monto:
+                shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] += monto
+                shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] -= monto
+                st.rerun()
+        if c2.button("⬇️ Scarica Agente"):
+            shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] -= monto
+            shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Coins_Disponibili'] += monto
             st.rerun()
-    st.divider()
-    id_sm = st.text_input("ID STARMAKER")
-    euro_v = st.number_input("EURO INCASSATI (€)", min_value=0.0)
-    if st.button("🚀 CARICA MONETE"):
-        c_scalare = int(euro_v * 91)
-        if coins_disp >= c_scalare:
-            shared_db.loc[idx_u, 'Coins_Disponibili'] -= c_scalare
+
+# --- 6. PANNELLO AGENTE ---
+else:
+    st.title(f"📱 Console: {st.session_state.user}")
+    id_sm = st.text_input("ID StarMaker")
+    euro_v = st.number_input("Euro Incassati", min_value=0.0)
+    if st.button("🚀 Carica"):
+        costo = int(euro_v * 91)
+        if coins_disp >= costo:
+            shared_db.loc[idx_u, 'Coins_Disponibili'] -= costo
             shared_db.loc[idx_u, 'Guadagno_Coins'] += (euro_v * 5)
             shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Guadagno_Coins'] += (euro_v * 5)
-            shared_db.loc[idx_u, 'Vendite_Totali_Coins'] += c_scalare
             shared_db.loc[idx_u, 'Euro_Da_Inviare'] += euro_v
-            st.balloons()
             st.rerun()
-        else: st.error("Energia insufficiente!")
 
-# --- 7. GARA ---
-st.divider()
-st.subheader("🏁 Classifica Gara Taurus")
-st.table(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Vendite_Totali_Coins']].sort_values(by='Vendite_Totali_Coins', ascending=False))
+st.sidebar.button("🔄 Refresh", on_click=lambda: st.rerun())
