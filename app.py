@@ -7,7 +7,7 @@ import urllib.parse
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Taurus Agency - Top 1 StarMaker", layout="wide")
 
-# --- 1. MEMORIA CONDIVISA (SINCRONIZZAZIONE REAL-TIME) ---
+# --- 1. MEMORIA CONDIVISA SINCRONIZZATA ---
 @st.cache_resource
 def get_shared_db():
     utenti = ["MassimoMaster", "Terry", "Fabio", "Elena", "USA_Agent", "Queen"]
@@ -41,33 +41,24 @@ if not st.session_state.auth:
         else: st.error("Credenziali Errate.")
     st.stop()
 
-# --- 3. GRAFICA "RISULTATO LAVORO" (Tabellone in alto a destra) ---
+# --- 3. TABELLONE RISULTATO (Grafica Evidenziata) ---
 idx_u = shared_db['Agente'] == st.session_state.user
 guadagno_c = shared_db.loc[idx_u, 'Guadagno_Coins'].values[0]
-# Formula: 5 monete = 0.50€ (metà del margine di 1 euro)
-guadagno_e = (guadagno_c / 5) * 0.5 
+# Formula Economica: Se guadagno 5 coins ogni 1€, il valore in euro è coins / 5
+guadagno_e = guadagno_c / 5 
 
-# Creazione di un'area evidenziata con CSS personalizzato
 st.markdown(f"""
-    <div style="
-        background: linear-gradient(90deg, #1e1e1e 0%, #3a3a3a 100%);
-        padding: 25px;
-        border-radius: 15px;
-        border-right: 15px solid #FF4B4B;
-        text-align: right;
-        margin-bottom: 20px;
-        box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
-    ">
-        <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0; text-transform: uppercase;">🏆 Risultato del tuo Lavoro</p>
-        <h1 style="color: white; font-size: 55px; margin: 0; line-height: 1.1;">{int(guadagno_c)} <span style="font-size: 25px;">COINS</span></h1>
-        <h2 style="color: #00FF00; font-size: 40px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 20px;">MATURATI</span></h2>
+    <div style="background: linear-gradient(90deg, #1e1e1e 0%, #3a3a3a 100%); padding: 25px; border-radius: 15px; border-right: 15px solid #FF4B4B; text-align: right; margin-bottom: 20px;">
+        <p style="color: #FF4B4B; font-size: 18px; font-weight: bold; margin: 0;">🏆 RISULTATO DEL TUO LAVORO</p>
+        <h1 style="color: white; font-size: 60px; margin: 0;">{int(guadagno_c)} <span style="font-size: 25px;">COINS</span></h1>
+        <h2 style="color: #00FF00; font-size: 45px; margin: 0;">€ {guadagno_e:.2f} <span style="font-size: 20px;">MATURATI</span></h2>
     </div>
     """, unsafe_allow_html=True)
 
-# Sidebar
+# Sidebar con Refresh
 with st.sidebar:
     st.header(f"👤 {st.session_state.user}")
-    if st.button("🔄 Aggiorna Dati"): st.rerun()
+    if st.button("🔄 Aggiorna Dati (Refresh)"): st.rerun()
     if st.button("🚪 Esci"):
         st.session_state.auth = False
         st.rerun()
@@ -75,50 +66,56 @@ with st.sidebar:
 # --- 4. PANNELLO MASTER (MASSIMO) ---
 if st.session_state.is_master:
     st.title("🚀 Taurus Master Control")
-    with st.expander("💸 Gestione Vasi Comunicanti (COINS)"):
-        target = st.selectbox("Seleziona Agente", shared_db['Agente'])
-        quant = st.number_input("Quantità COINS (+ aggiungi, - togli)", step=100.0)
-        if st.button("Conferma Spostamento"):
+    
+    # Funzione richiesta: Aggiungere e Togliere dal deposito principale o subagenti
+    with st.expander("💸 Gestione Totale Depositi (Aggiungi/Togli)"):
+        target = st.selectbox("Seleziona Conto da modificare", shared_db['Agente'])
+        quant = st.number_input("Quantità COINS (+ per caricare, - per scaricare)", step=100.0)
+        if st.button("Conferma Operazione"):
             shared_db.loc[shared_db['Agente'] == target, 'Coins_Disponibili'] += quant
-            st.success(f"Budget COINS di {target} aggiornato!")
+            st.success(f"Saldo di {target} aggiornato con successo!")
             st.rerun()
     
-    st.write("### Riepilogo Agenzia")
+    st.write("### 📊 Riepilogo Agenzia in Tempo Reale")
     st.dataframe(shared_db, use_container_width=True)
+    
     if st.button("🗑️ Reset Provvigioni"):
         shared_db['Guadagno_Coins'] = 0.0
         st.rerun()
 
 # --- 5. PANNELLO SUBAGENTE ---
 else:
-    st.title("🛒 Caricamento Monete StarMaker")
+    st.title(f"📱 Console Agente: {st.session_state.user}")
     budget_c = shared_db.loc[idx_u, 'Coins_Disponibili'].values[0]
-    st.metric("BUDGET DISPONIBILE PER VENDITE", f"{int(budget_c)} COINS")
+    st.metric("BUDGET COINS DISPONIBILE", f"{int(budget_c)}")
     
     st.divider()
     id_sm = st.text_input("ID UTENTE STARMAKER")
     euro_v = st.number_input("EURO INCASSATI DAL CLIENTE (€)", min_value=0.0, step=1.0)
     
-    if st.button("🚀 CONFERMA E CARICA MONETE"):
-        c_erogate = int(euro_v * 91)
-        if budget_c >= c_erogate:
-            # Sottrazione budget
-            shared_db.loc[idx_u, 'Coins_Disponibili'] -= c_erogate
-            # 5 coins subagente e 5 coins Massimo
-            shared_db.loc[idx_u, 'Guadagno_Coins'] += (euro_v * 5)
-            shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Guadagno_Coins'] += (euro_v * 5)
-            # Gara
-            shared_db.loc[idx_u, 'Vendite_Totali_Coins'] += c_erogate
+    if st.button("🚀 ESEGUI RICARICA CLIENTE"):
+        # CALCOLO PRECISO:
+        # Cliente riceve 91 coins per ogni euro
+        coins_da_scalare = int(euro_v * 91)
+        # L'agente guadagna 5 coins per ogni euro (es: 22€ = 110 coins)
+        provvigione_agente = int(euro_v * 5)
+        # L'agenzia (Massimo) guadagna 5 coins per ogni euro
+        provvigione_master = int(euro_v * 5)
+        
+        if budget_c >= coins_da_scalare:
+            shared_db.loc[idx_u, 'Coins_Disponibili'] -= coins_da_scalare
+            shared_db.loc[idx_u, 'Guadagno_Coins'] += provvigione_agente
+            shared_db.loc[shared_db['Agente'] == "MassimoMaster", 'Guadagno_Coins'] += provvigione_master
+            shared_db.loc[idx_u, 'Vendite_Totali_Coins'] += coins_da_scalare
             st.balloons()
             st.rerun()
         else:
-            st.error(f"❌ Budget insufficiente! Mancano {int(c_erogate - budget_c)} COINS.")
+            st.error(f"Budget insufficiente! Hai {int(budget_c)} coins, ma per questa vendita ne servono {coins_da_scalare}.")
 
-    # WhatsApp
-    msg_wa = f"Ciao Massimo, riscatto il mio guadagno Taurus: {int(guadagno_c)} Coins (€ {guadagno_e:.2f})"
-    st.link_button("📩 RISCATTA GUADAGNO (WHATSAPP)", f"https://wa.me/393663749350?text={urllib.parse.quote(msg_wa)}")
+    msg_wa = f"Ciao Massimo, richiedo riscatto Taurus: {int(guadagno_c)} Coins (€ {guadagno_e:.2f})"
+    st.link_button("📩 INVIA RICHIESTA GUADAGNO (WHATSAPP)", f"https://wa.me/393663749350?text={urllib.parse.quote(msg_wa)}")
 
-# --- 6. GARA PUBBLICA ---
+# --- 6. GARA ---
 st.divider()
-st.subheader("🏁 Classifica Subagenti (Gara in COINS)")
+st.subheader("🏁 Classifica Vendite Taurus Agency")
 st.table(shared_db[shared_db['Agente'] != "MassimoMaster"][['Agente', 'Vendite_Totali_Coins']].sort_values(by='Vendite_Totali_Coins', ascending=False))
